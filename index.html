@@ -13,12 +13,8 @@
          FIREBASE SDK
     ============================================================ -->
     <script type="module">
-      // ============================================================
-      //  ⚙️  CONFIGURACIÓN FIREBASE — REEMPLAZA ESTOS VALORES
-      //      con los de tu proyecto en Firebase Console
-      // ============================================================
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-      import { getDatabase, ref, set, get, onValue }
+      import { getDatabase, ref, set, get }
         from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
       import { getAnalytics }
         from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
@@ -33,43 +29,30 @@
         appId:             "1:992465778593:web:6694796e5b24daa1ee7de0",
         measurementId:     "G-XXEK7S54TR"
       };
-      // ============================================================
 
-      const app       = initializeApp(firebaseConfig);
-      const analytics = getAnalytics(app);
-      const db        = getDatabase(app);
+      try {
+        const app = initializeApp(firebaseConfig);
+        getAnalytics(app);
+        const db = getDatabase(app);
 
-      // Exponemos helpers al scope global para que el código principal los use
-      window._fbSave = async (data) => {
-        try {
-          await set(ref(db, 'mealgo/state'), data);
-          return true;
-        } catch(e) {
-          console.error("Firebase save error:", e);
-          return false;
-        }
-      };
+        window._fbSave = async (data) => {
+          try { await set(ref(db, 'mealgo/state'), data); return true; }
+          catch(e) { console.error("Firebase save error:", e); return false; }
+        };
 
-      window._fbLoad = async () => {
-        try {
-          const snap = await get(ref(db, 'mealgo/state'));
-          return snap.exists() ? snap.val() : null;
-        } catch(e) {
-          console.error("Firebase load error:", e);
-          return null;
-        }
-      };
+        window._fbLoad = async () => {
+          try { const snap = await get(ref(db, 'mealgo/state')); return snap.exists() ? snap.val() : null; }
+          catch(e) { console.error("Firebase load error:", e); return null; }
+        };
 
-      // Escucha cambios en tiempo real (útil si hay varios dispositivos)
-      window._fbListen = (callback) => {
-        onValue(ref(db, 'mealgo/state'), (snap) => {
-          if (snap.exists()) callback(snap.val());
-        });
-      };
-
-      // Señal de que Firebase está listo
-      window._firebaseReady = true;
-      document.dispatchEvent(new Event('firebase-ready'));
+        window._firebaseReady = true;
+      } catch(e) {
+        console.error("Firebase init error:", e);
+        window._firebaseReady = false;
+      } finally {
+        // Siempre disparar el evento para que la app inicie
+        document.dispatchEvent(new Event('firebase-ready'));
+      }
     </script>
 
     <style>
@@ -506,10 +489,8 @@
      LÓGICA PRINCIPAL (igual que el original, adaptado a Firebase)
 ══════════════════════════════════════════════════════════════ -->
 <script>
-// ─── Esperamos a que Firebase esté listo antes de iniciar la app ───
-document.addEventListener('firebase-ready', startApp);
-// Fallback: si firebase falla, se inicia igual (sin sincronía en la nube)
-setTimeout(() => { if (!window._firebaseReady) { console.warn('Firebase no disponible, continuando offline.'); startApp(); } }, 5000);
+// ─── Iniciamos la app cuando Firebase dispare su evento ───
+document.addEventListener('firebase-ready', startApp, { once: true });
 
 async function startApp() {
   const { jsPDF } = window.jspdf;
