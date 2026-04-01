@@ -1,0 +1,1883 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MRP MealGo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- ============================================================
+         FIREBASE SDK
+    ============================================================ -->
+    <script type="module">
+      // ============================================================
+      //  ⚙️  CONFIGURACIÓN FIREBASE — REEMPLAZA ESTOS VALORES
+      //      con los de tu proyecto en Firebase Console
+      // ============================================================
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+      import { getDatabase, ref, set, get, onValue }
+        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+      import { getAnalytics }
+        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
+
+      const firebaseConfig = {
+        apiKey:            "AIzaSyCJ-RUtec0rF031NAUPd5pmSktRlYRMAIo",
+        authDomain:        "mealgo-mrp.firebaseapp.com",
+        databaseURL:       "https://mealgo-mrp-default-rtdb.firebaseio.com",
+        projectId:         "mealgo-mrp",
+        storageBucket:     "mealgo-mrp.firebasestorage.app",
+        messagingSenderId: "992465778593",
+        appId:             "1:992465778593:web:6694796e5b24daa1ee7de0",
+        measurementId:     "G-XXEK7S54TR"
+      };
+      // ============================================================
+
+      const app       = initializeApp(firebaseConfig);
+      const analytics = getAnalytics(app);
+      const db        = getDatabase(app);
+
+      // Exponemos helpers al scope global para que el código principal los use
+      window._fbSave = async (data) => {
+        try {
+          await set(ref(db, 'mealgo/state'), data);
+          return true;
+        } catch(e) {
+          console.error("Firebase save error:", e);
+          return false;
+        }
+      };
+
+      window._fbLoad = async () => {
+        try {
+          const snap = await get(ref(db, 'mealgo/state'));
+          return snap.exists() ? snap.val() : null;
+        } catch(e) {
+          console.error("Firebase load error:", e);
+          return null;
+        }
+      };
+
+      // Escucha cambios en tiempo real (útil si hay varios dispositivos)
+      window._fbListen = (callback) => {
+        onValue(ref(db, 'mealgo/state'), (snap) => {
+          if (snap.exists()) callback(snap.val());
+        });
+      };
+
+      // Señal de que Firebase está listo
+      window._firebaseReady = true;
+      document.dispatchEvent(new Event('firebase-ready'));
+    </script>
+
+    <style>
+      body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+      .nav-link { transition: all 0.3s ease; border-bottom: 2px solid transparent; }
+      .nav-link.active { border-bottom-color: #f97316; color: #f97316; font-weight: 600; }
+      .card { background-color: white; border-radius: 0.75rem;
+              box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+              padding: 1.5rem; }
+      .btn-primary { background-color: #f97316; color: white; transition: background-color 0.3s; }
+      .btn-primary:hover:not(:disabled) { background-color: #ea6c0a; }
+      .btn-primary:disabled { background-color: #9ca3af; cursor: not-allowed; }
+      .btn-secondary { background-color: #6b7280; color: white; transition: background-color 0.3s; }
+      .btn-secondary:hover { background-color: #4b5563; }
+      .btn-danger { background-color: #ef4444; color: white; transition: background-color 0.3s; }
+      .btn-danger:hover { background-color: #dc2626; }
+      .modal-backdrop { position:fixed; top:0; left:0; width:100%; height:100%;
+                        background-color:rgba(0,0,0,0.5); z-index:50;
+                        display:flex; align-items:center; justify-content:center; }
+      .modal-content { background-color:white; padding:2rem; border-radius:0.75rem;
+                       width:90%; max-width:900px; max-height:90vh; overflow-y:auto; }
+      input[type=number]::-webkit-inner-spin-button,
+      input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+      input[type=number] { -moz-appearance:textfield; }
+
+      /* ── Logo header ── */
+      .app-header { background: linear-gradient(135deg, #1a3a1a 0%, #2d5a2d 50%, #1a3a1a 100%);
+                    padding: 1rem 2rem; display:flex; align-items:center; justify-content:space-between;
+                    border-radius: 0 0 1rem 1rem; margin-bottom: 1.5rem;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+      .app-header .brand { display:flex; align-items:center; gap:1rem; }
+      .app-header .brand img { height: 56px; }
+      .app-header .subtitle { color: #d1fae5; font-size: 0.85rem; margin-top: 0.1rem; }
+      .app-header .status-badge { font-size:0.75rem; padding:0.3rem 0.8rem;
+                                   border-radius:999px; font-weight:600; }
+      .status-connected { background:#d1fae5; color:#065f46; }
+      .status-disconnected { background:#fee2e2; color:#991b1b; }
+      .status-saving { background:#fef3c7; color:#92400e; }
+
+      /* ── Sync overlay ── */
+      #sync-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45);
+                      z-index:100; display:flex; flex-direction:column;
+                      align-items:center; justify-content:center; gap:1rem; }
+      #sync-overlay .spinner { width:56px; height:56px; border:6px solid #f97316;
+                                border-top-color:transparent; border-radius:50%;
+                                animation: spin 0.8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #sync-overlay p { color:white; font-size:1.1rem; font-weight:600; }
+
+      /* Spinner inline para guardar */
+      .saving-dot::after { content:''; display:inline-block; width:8px; height:8px;
+                           margin-left:6px; background:#f97316; border-radius:50%;
+                           animation: pulse 1s ease-in-out infinite; }
+      @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
+    </style>
+</head>
+<body class="antialiased">
+
+<!-- Loading overlay -->
+<div id="sync-overlay">
+  <div class="spinner"></div>
+  <p>Conectando con Firebase…</p>
+</div>
+
+<div class="min-h-screen container mx-auto px-4 pb-8">
+
+  <!-- ══════════════════════════════════════════════
+       ENCABEZADO CON LOGO
+  ══════════════════════════════════════════════ -->
+  <header class="app-header">
+    <div class="brand">
+      <!--
+        LOGO REAL: El archivo "logo_mealgo.png" debe estar en la misma carpeta que este HTML en GitHub.
+        Si tu archivo tiene otro nombre, cámbialo aquí en los tres lugares donde aparece "logo_mealgo.png".
+      -->
+      <img src="logo_mealgo.png"
+           alt="MealGo!"
+           style="height:64px; object-fit:contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));"
+           onerror="this.style.display='none'; document.getElementById('logo-fallback').style.display='flex';">
+      <!-- Fallback si la imagen no carga (ej: en local sin servidor) -->
+      <span id="logo-fallback" style="display:none; font-family:'Arial Black',Arial; font-size:28px; font-weight:900;">
+        <span style="color:#3b82f6">M</span><span style="color:#6b9e3b">eal</span><span style="color:#f97316">G</span><span style="color:#6b9e3b">o</span><span style="color:#ef4444">!</span>
+      </span>
+      <div>
+        <div class="subtitle">Sistema de Planificación y Recursos</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="firebase-status" class="status-badge status-disconnected">⚡ Conectando…</span>
+    </div>
+  </header>
+
+  <!-- Controles de Datos -->
+  <div class="card mb-6">
+    <h2 class="text-xl font-semibold text-gray-700 mb-4">Gestión de Datos</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <button id="export-data-btn" class="w-full py-2 px-4 rounded-lg font-semibold btn-secondary">
+        Exportar Datos (.json)
+      </button>
+      <label for="import-file" class="w-full text-center cursor-pointer py-2 px-4 rounded-lg font-semibold btn-secondary">
+        Importar Datos (.json)
+        <input type="file" id="import-file" class="hidden" accept=".json">
+      </label>
+      <button id="undo-btn" class="w-full py-2 px-4 rounded-lg font-semibold bg-yellow-500 text-white disabled:bg-gray-400">
+        Deshacer Última Acción
+      </button>
+    </div>
+  </div>
+
+  <!-- Navegación -->
+  <nav class="flex flex-wrap justify-center border-b border-gray-200 mb-8 bg-white rounded-lg p-2 shadow-sm">
+    <a href="#dashboard"   id="nav-dashboard"   class="nav-link active px-6 py-3 text-gray-600">Panel de Control</a>
+    <a href="#clients"     id="nav-clients"     class="nav-link px-6 py-3 text-gray-600">Clientes</a>
+    <a href="#ingredients" id="nav-ingredients" class="nav-link px-6 py-3 text-gray-600">Ingredientes</a>
+    <a href="#inventory"   id="nav-inventory"   class="nav-link px-6 py-3 text-gray-600">Inventario</a>
+    <a href="#dishes"      id="nav-dishes"      class="nav-link px-6 py-3 text-gray-600">Platos</a>
+    <a href="#purchases"   id="nav-purchases"   class="nav-link px-6 py-3 text-gray-600">Compras</a>
+    <a href="#production"  id="nav-production"  class="nav-link px-6 py-3 text-gray-600">Producción</a>
+  </nav>
+
+  <main>
+    <!-- Panel de Control -->
+    <section id="dashboard-section" class="space-y-6">
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Resumen de Platos Finales</h2>
+        <div id="dashboard-final-dishes-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+      </div>
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Resumen de Preparaciones / Acompañantes</h2>
+        <div id="dashboard-preparations-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+      </div>
+    </section>
+
+    <!-- Clientes -->
+    <section id="clients-section" class="hidden space-y-6">
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Añadir Nuevo Cliente</h2>
+        <form id="add-client-form" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-700">Nombre</label>
+              <input type="text" id="client-name" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Apellido</label>
+              <input type="text" id="client-lastname" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div><label class="block text-sm font-medium text-gray-700">Número de Contacto</label>
+              <input type="tel" id="client-contact" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">WhatsApp</label>
+              <input type="tel" id="client-whatsapp" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Correo Electrónico</label>
+              <input type="email" id="client-email" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+          </div>
+          <div><label class="block text-sm font-medium text-gray-700">Estado</label>
+            <select id="client-status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+              <option value="activo">Activo</option>
+              <option value="inactivo">Inactivo</option>
+            </select>
+          </div>
+          <div class="text-right">
+            <button type="submit" class="py-2 px-6 rounded-lg font-semibold btn-primary">Añadir Cliente</button>
+          </div>
+        </form>
+      </div>
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Lista de Clientes</h2>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50"><tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacto</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+            </tr></thead>
+            <tbody id="clients-list" class="bg-white divide-y divide-gray-200"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ingredientes -->
+    <section id="ingredients-section" class="hidden space-y-6">
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Gestionar Tipos de Ingredientes</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <form id="add-ingredient-type-form" class="flex items-end gap-2">
+              <div class="flex-grow">
+                <label for="ingredient-type-name" class="block text-sm font-medium text-gray-700">Nuevo Tipo</label>
+                <input type="text" id="ingredient-type-name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3">
+              </div>
+              <button type="submit" class="py-2 px-4 rounded-lg font-semibold btn-secondary">Añadir</button>
+            </form>
+          </div>
+          <div>
+            <h3 class="text-lg font-semibold text-gray-700 mb-2">Tipos Existentes</h3>
+            <div id="ingredient-types-list" class="space-y-2 max-h-48 overflow-y-auto pr-2"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Añadir Nuevo Ingrediente</h2>
+        <form id="add-ingredient-form" class="space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div><label class="block text-sm font-medium text-gray-700">Nombre del Ingrediente</label>
+              <input type="text" id="ingredient-name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Tipo de Ingrediente</label>
+              <select id="ingredient-type-selector" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3"></select></div>
+            <div><label class="block text-sm font-medium text-gray-700">Unidad de Compra</label>
+              <input type="text" id="ingredient-purchase-unit" placeholder="Ej: Saco 25kg" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Precio de Compra ($)</label>
+              <input type="number" id="ingredient-purchase-price" min="0" step="any" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3"></div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div><label class="block text-sm font-medium text-gray-700">Unidad de Consumo</label>
+              <select id="ingredient-consumption-unit" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3">
+                <option value="g">Gramos (g)</option>
+                <option value="ml">Mililitros (ml)</option>
+                <option value="un">Unidades (un)</option>
+              </select></div>
+            <div><label class="block text-sm font-medium text-gray-700">Cantidad por Compra</label>
+              <input type="number" id="ingredient-consumption-qty" min="0.01" step="any" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3" placeholder="En Ud. de Consumo"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Rendimiento (%)</label>
+              <input type="number" id="ingredient-yield" min="1" max="100" value="100" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Cant. Mínima Compra</label>
+              <input type="number" id="ingredient-min-purchase-qty" min="0.01" step="any" value="1" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3"></div>
+          </div>
+          <div class="text-right">
+            <button type="submit" class="w-full md:w-auto py-2 px-6 rounded-lg font-semibold btn-primary">Añadir Ingrediente</button>
+          </div>
+        </form>
+      </div>
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Lista de Ingredientes</h2>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700">Buscar Ingrediente</label>
+          <input type="text" id="search-ingredient-input" placeholder="Escribe para buscar…" class="mt-1 block w-full md:w-1/2 border border-gray-300 rounded-md shadow-sm py-2 px-3">
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full">
+            <thead class="bg-gray-50"><tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unidad Compra</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Precio Compra</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Costo / Consumo</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cant. Mín. Compra</th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+            </tr></thead>
+            <tbody id="ingredients-list" class="bg-white"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Inventario -->
+    <section id="inventory-section" class="hidden space-y-6">
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Gestión de Inventario</h2>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700">Buscar Ingrediente</label>
+          <input type="text" id="search-inventory-input" placeholder="Escribe para buscar…" class="mt-1 block w-full md:w-1/2 border border-gray-300 rounded-md shadow-sm py-2 px-3">
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50"><tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ingrediente</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cant. Disponible</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unidad</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actualizar Cantidad</th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+            </tr></thead>
+            <tbody id="inventory-list" class="bg-white divide-y divide-gray-200"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Platos -->
+    <section id="dishes-section" class="hidden space-y-6">
+      <div class="card">
+        <h2 id="dish-form-title" class="text-2xl font-bold text-gray-800 mb-4">Crear Nuevo Plato</h2>
+        <form id="dish-form" class="space-y-4">
+          <input type="hidden" id="editing-dish-id">
+          <div><label class="block text-sm font-medium text-gray-700">Nombre del Plato</label>
+            <input type="text" id="dish-name" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+          <div><label class="block text-sm font-medium text-gray-700">Tipo de Plato</label>
+            <select id="dish-type" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+              <option value="final">Plato Final</option>
+              <option value="preparation">Preparaciones / Acompañantes</option>
+            </select></div>
+          <div>
+            <h3 class="text-lg font-semibold text-gray-700 mb-2">Componentes del Plato</h3>
+            <div id="dish-components-list" class="space-y-3 mb-4"></div>
+            <div class="flex flex-wrap items-end gap-2 p-2 bg-gray-50 rounded-md">
+              <div class="flex-grow min-w-[200px]">
+                <label class="block text-sm font-medium text-gray-700">Componente</label>
+                <select id="component-selector" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></select>
+              </div>
+              <div class="w-28">
+                <label class="block text-sm font-medium text-gray-700">Cantidad</label>
+                <input type="number" id="component-quantity" value="1" min="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+              </div>
+              <div class="w-24">
+                <label class="block text-sm font-medium text-gray-700">Unidad</label>
+                <select id="component-manual-unit" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                  <option value="g">g</option><option value="ml">ml</option><option value="un">un</option>
+                </select>
+              </div>
+              <button type="button" id="add-component-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary whitespace-nowrap">Añadir</button>
+            </div>
+          </div>
+          <div id="dish-form-buttons" class="text-right flex gap-3 justify-end">
+            <button type="submit" id="submit-dish-btn" class="py-2 px-6 rounded-lg font-semibold btn-primary">Crear Plato</button>
+          </div>
+        </form>
+      </div>
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Lista de Platos</h2>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700">Buscar Plato</label>
+          <input type="text" id="search-dish-input" placeholder="Escribe para buscar…" class="mt-1 block w-full md:w-1/2 border border-gray-300 rounded-md shadow-sm py-2 px-3">
+        </div>
+        <div>
+          <h3 class="text-xl font-bold text-gray-700 mb-2 border-b pb-2">Platos Finales</h3>
+          <div id="final-dishes-list" class="space-y-4"></div>
+        </div>
+        <div class="mt-8">
+          <h3 class="text-xl font-bold text-gray-700 mb-2 border-b pb-2">Preparaciones / Acompañantes</h3>
+          <div id="preparations-list" class="space-y-4"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compras -->
+    <section id="purchases-section" class="hidden space-y-6">
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Plan de Producción y Compras</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-700 mb-2">Crear Nuevo Pedido de Producción</h3>
+            <div class="p-4 bg-gray-50 rounded-lg space-y-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label class="block text-sm font-medium text-gray-700">Fecha del Pedido</label>
+                  <input type="date" id="order-date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-gray-700">Cliente</label>
+                  <select id="order-client-selector" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></select></div>
+              </div>
+              <div class="flex flex-wrap gap-4 items-end pt-4 border-t">
+                <div class="flex-grow min-w-[150px]">
+                  <label class="block text-sm font-medium text-gray-700">Plato</label>
+                  <select id="purchase-dish-selector" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></select>
+                </div>
+                <div class="w-24">
+                  <label class="block text-sm font-medium text-gray-700">Cantidad</label>
+                  <input type="number" id="purchase-dish-quantity" value="1" min="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                </div>
+                <button type="button" id="add-item-to-order-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary">Añadir Plato</button>
+              </div>
+              <div id="current-order-items-list" class="space-y-2 max-h-60 overflow-y-auto pr-2"></div>
+              <div id="current-order-total" class="text-right font-bold text-xl text-gray-800 pt-2 border-t"></div>
+              <button type="button" id="save-order-to-plan-btn" class="w-full py-2 px-4 rounded-lg font-semibold btn-primary">Guardar Pedido al Plan</button>
+            </div>
+            <div class="mt-6">
+              <div class="flex justify-between items-center mb-2">
+                <h3 class="text-lg font-semibold text-gray-700">Pedidos Guardados</h3>
+                <div class="flex gap-4 items-center">
+                  <label class="text-sm font-medium text-gray-700">Ordenar por:</label>
+                  <select id="order-sort-by" class="block w-40 border-gray-300 rounded-md shadow-sm text-sm">
+                    <option value="date">Día</option>
+                    <option value="client">Cliente</option>
+                  </select>
+                  <div class="w-48">
+                    <select id="month-filter" class="block w-full border-gray-300 rounded-md shadow-sm text-sm"></select>
+                  </div>
+                </div>
+              </div>
+              <div id="dishes-to-produce-list" class="space-y-2 max-h-96 overflow-y-auto pr-2"></div>
+            </div>
+          </div>
+          <div class="bg-gray-50 p-6 rounded-lg">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Generar Lista de Compras</h3>
+            <div class="flex flex-wrap items-end gap-4 p-4 border rounded-md mb-6">
+              <div><label class="block text-sm font-medium text-gray-700">Fecha Inicial</label>
+                <input type="date" id="start-date-filter" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm py-2 px-3"></div>
+              <div><label class="block text-sm font-medium text-gray-700">Fecha Final</label>
+                <input type="date" id="end-date-filter" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm py-2 px-3"></div>
+              <button type="button" id="generate-by-date-btn" class="py-2 px-4 rounded-lg font-semibold btn-primary whitespace-nowrap">Generar y Guardar</button>
+            </div>
+            <div id="shopping-list-history">
+              <h3 class="text-xl font-bold text-gray-800 mb-4">Historial de Listas de Compras</h3>
+              <div id="saved-shopping-lists" class="space-y-2 max-h-96 overflow-y-auto"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Producción -->
+    <section id="production-section" class="hidden space-y-6">
+      <div class="card">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Plan de Producción</h2>
+        <div class="flex flex-wrap items-end gap-4 mb-6">
+          <div class="flex-grow flex flex-wrap gap-4">
+            <div><label class="block text-sm font-medium text-gray-700">Fecha Inicial</label>
+              <input type="date" id="production-start-date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Fecha Final</label>
+              <input type="date" id="production-end-date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+          </div>
+          <button id="save-production-plan-btn" class="py-2 px-4 rounded-lg font-semibold btn-primary">Guardar Plan</button>
+        </div>
+        <div id="production-details" class="space-y-8"></div>
+      </div>
+      <div class="card">
+        <h3 class="text-xl font-bold text-gray-800 mb-4">Historial de Planes de Producción</h3>
+        <div id="saved-production-plans" class="space-y-2 max-h-96 overflow-y-auto"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Generic Modal -->
+<div id="generic-modal" class="modal-backdrop hidden">
+  <div class="modal-content">
+    <div class="flex justify-between items-center mb-4">
+      <h3 id="modal-title" class="text-2xl font-bold text-gray-800"></h3>
+      <button id="modal-close-btn" class="text-gray-500 font-bold text-2xl">&times;</button>
+    </div>
+    <div id="modal-body"></div>
+    <div id="modal-footer" class="mt-6 text-right"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     LÓGICA PRINCIPAL (igual que el original, adaptado a Firebase)
+══════════════════════════════════════════════════════════════ -->
+<script>
+// ─── Esperamos a que Firebase esté listo antes de iniciar la app ───
+document.addEventListener('firebase-ready', startApp);
+// Fallback: si firebase falla, se inicia igual (sin sincronía en la nube)
+setTimeout(() => { if (!window._firebaseReady) { console.warn('Firebase no disponible, continuando offline.'); startApp(); } }, 5000);
+
+async function startApp() {
+  const { jsPDF } = window.jspdf;
+
+  // ── Logo en Base64 para PDFs (se carga una vez al iniciar) ──
+  let _logoBase64 = null;
+  const loadLogoForPDF = () => new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      _logoBase64 = canvas.toDataURL('image/png');
+      resolve(_logoBase64);
+    };
+    img.onerror = () => { _logoBase64 = null; resolve(null); };
+    img.src = 'logo_mealgo.png';
+  });
+
+  // Añade el logo al encabezado de un documento jsPDF
+  const addPDFHeader = (doc, title, subtitle = '') => {
+    if (_logoBase64) {
+      try { doc.addImage(_logoBase64, 'PNG', 10, 6, 38, 16); } catch(e) {}
+    }
+    doc.setFontSize(16); doc.setTextColor(30);
+    doc.text(title, _logoBase64 ? 52 : 14, 14);
+    if (subtitle) { doc.setFontSize(10); doc.setTextColor(100); doc.text(subtitle, _logoBase64 ? 52 : 14, 20); }
+    return _logoBase64 ? 30 : 26; // retorna el Y desde donde continuar
+  };
+
+  // ── Logo en modales ──
+  const MODAL_LOGO_HTML = `<img src="logo_mealgo.png" alt="MealGo!" style="height:32px;object-fit:contain;vertical-align:middle;margin-right:8px;" onerror="this.style.display='none'">`;
+
+  // ── Indicador de estado Firebase ──
+  const statusBadge = document.getElementById('firebase-status');
+  const setStatus = (s) => {
+    statusBadge.className = 'status-badge';
+    if (s === 'connected')    { statusBadge.classList.add('status-connected');    statusBadge.textContent = '✅ Firebase conectado'; }
+    else if (s === 'saving')  { statusBadge.classList.add('status-saving');       statusBadge.textContent = '💾 Guardando…'; }
+    else if (s === 'error')   { statusBadge.classList.add('status-disconnected'); statusBadge.textContent = '⚠️ Error Firebase'; }
+    else                      { statusBadge.classList.add('status-disconnected'); statusBadge.textContent = '⚡ Sin conexión'; }
+  };
+
+  // ══════════════════════════════════
+  //   ESTADO INICIAL
+  // ══════════════════════════════════
+  let state = {
+    ingredients: [], ingredientTypes: [], dishes: [], clients: [],
+    customerOrders: [], savedShoppingLists: [], savedProductionPlans: [],
+    executedProductions: [], lastOrderSequence: {},
+  };
+
+  let history = [];
+  let editingDishId = null;
+  let currentDishComponents = [];
+  let currentProductionOrder = { items: [] };
+  let _savePending = false;
+  let _saveTimer  = null;
+
+  const sections  = { dashboard:'dashboard-section', clients:'clients-section',
+    ingredients:'ingredients-section', inventory:'inventory-section',
+    dishes:'dishes-section', purchases:'purchases-section', production:'production-section' };
+  const navLinks  = { dashboard:'nav-dashboard', clients:'nav-clients',
+    ingredients:'nav-ingredients', inventory:'nav-inventory',
+    dishes:'nav-dishes', purchases:'nav-purchases', production:'nav-production' };
+
+  // ══════════════════════════════════
+  //   PERSISTENCIA FIREBASE
+  // ══════════════════════════════════
+  const saveState = () => {
+    // Debounce: espera 800ms tras el último cambio para guardar
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(async () => {
+      setStatus('saving');
+      if (window._fbSave) {
+        const ok = await window._fbSave(state);
+        setStatus(ok ? 'connected' : 'error');
+      } else {
+        setStatus('error');
+      }
+    }, 800);
+  };
+
+  const loadState = async () => {
+    let data = null;
+    if (window._fbLoad) {
+      data = await window._fbLoad();
+      setStatus(data !== null ? 'connected' : 'connected'); // connected either way
+    }
+
+    history = [];
+    if (data) {
+      state = {
+        ingredients:          data.ingredients          || [],
+        ingredientTypes:      data.ingredientTypes      || [],
+        dishes:               data.dishes               || [],
+        clients:              data.clients              || [],
+        customerOrders:       data.customerOrders       || data.dishesToProduce || [],
+        savedShoppingLists:   data.savedShoppingLists   || [],
+        savedProductionPlans: data.savedProductionPlans || [],
+        executedProductions:  data.executedProductions  || [],
+        lastOrderSequence:    data.lastOrderSequence    || {},
+      };
+      // migraciones
+      state.ingredients.forEach(i => {
+        if (typeof i.inventoryQty  !== 'number') i.inventoryQty  = 0;
+        if (typeof i.minPurchaseQty!== 'number') i.minPurchaseQty= 1;
+        if (typeof i.typeId        === 'undefined') i.typeId    = null;
+      });
+      state.savedShoppingLists.forEach(l => {
+        if (!l.status) l.status = 'completed';
+        l.items.forEach(it => { if (typeof it.isPurchased === 'undefined') it.isPurchased = true; });
+      });
+      state.savedProductionPlans.forEach(p => {
+        if (typeof p.isExecuted !== 'boolean') p.isExecuted = false;
+      });
+      state.customerOrders.forEach(o => {
+        if (!o.shortId && o.id) o.shortId = `OLD-${o.id.substring(0,6)}`;
+      });
+    }
+  };
+
+  const updateState = (newState, recordHistory = true) => {
+    if (recordHistory) {
+      if (history.length > 20) history.shift();
+      history.push(JSON.parse(JSON.stringify(state)));
+    }
+    state = newState;
+    saveState();
+    renderAll();
+  };
+
+  const handleUndo = () => {
+    if (history.length > 0) { updateState(history.pop(), false); }
+  };
+
+  // ══════════════════════════════════
+  //   HELPERS
+  // ══════════════════════════════════
+  const fmtCur = v => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:2}).format(v);
+  const fmtDate = s => new Date(s+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  const generateOrderId = (dateString, temporaryMode=false) => {
+    const dateKey = dateString;
+    const [y,m,d] = dateString.split('-');
+    if (!y||!m||!d) return { newId:`ERR-${Date.now()}`, sequence:0, dateKey };
+    let sequence = state.lastOrderSequence[dateKey] || 0;
+    if (!temporaryMode) sequence++;
+    const newId = `${y.substring(2)}${m}${d}-${sequence.toString().padStart(3,'0')}`;
+    return { newId, sequence, dateKey };
+  };
+
+  const getBaseUnitCost = ing => {
+    if (!ing||!ing.purchasePrice||!ing.consumptionQty||!ing.yield||ing.consumptionQty===0) return 0;
+    const ppu = ing.purchasePrice / ing.consumptionQty;
+    const yf  = ing.yield / 100;
+    return yf > 0 ? ppu / yf : 0;
+  };
+
+  const calculateDishCost = dish => {
+    if (!dish||!dish.components) return 0;
+    return dish.components.reduce((t,c) => {
+      if (c.type==='ingredient') {
+        const ing = state.ingredients.find(i=>i.id===c.id);
+        return t + (ing ? getBaseUnitCost(ing)*c.quantity : 0);
+      } else {
+        const sub = state.dishes.find(d=>d.id===c.id);
+        return t + (sub ? calculateDishCost(sub)*c.quantity : 0);
+      }
+    }, 0);
+  };
+
+  const navigateTo = key => {
+    Object.keys(sections).forEach(k => document.getElementById(sections[k]).classList.add('hidden'));
+    Object.keys(navLinks).forEach(k => document.getElementById(navLinks[k]).classList.remove('active'));
+    document.getElementById(sections[key]).classList.remove('hidden');
+    document.getElementById(navLinks[key]).classList.add('active');
+    renderAll();
+  };
+
+  // ══════════════════════════════════
+  //   SETUP EVENT LISTENERS
+  // ══════════════════════════════════
+  const setupEventListeners = () => {
+    document.querySelector('nav').addEventListener('click', e => {
+      if (e.target.tagName==='A') { e.preventDefault(); navigateTo(e.target.id.replace('nav-','')); }
+    });
+    document.getElementById('undo-btn').addEventListener('click', handleUndo);
+    document.getElementById('add-ingredient-type-form').addEventListener('submit', handleAddIngredientType);
+    document.getElementById('add-ingredient-form').addEventListener('submit', handleAddIngredient);
+    document.getElementById('search-ingredient-input').addEventListener('input', renderIngredientsList);
+    document.getElementById('add-client-form').addEventListener('submit', handleAddClient);
+    document.getElementById('dish-form').addEventListener('submit', handleSubmitDishForm);
+    document.getElementById('add-component-btn').addEventListener('click', handleAddComponentToDish);
+    document.getElementById('component-selector').addEventListener('change', updateManualUnitSelector);
+    document.getElementById('add-item-to-order-btn').addEventListener('click', handleAddItemToOrder);
+    document.getElementById('save-order-to-plan-btn').addEventListener('click', handleSaveOrderToPlan);
+    document.getElementById('current-order-items-list').addEventListener('click', handleDeleteFromCurrentOrder);
+    document.getElementById('generate-by-date-btn').addEventListener('click', handleGenerateByDate);
+    document.getElementById('month-filter').addEventListener('change', renderSavedOrders);
+    document.getElementById('order-sort-by').addEventListener('change', renderSavedOrders);
+    document.getElementById('search-inventory-input').addEventListener('input', renderInventoryList);
+    document.getElementById('production-start-date').addEventListener('change', renderProductionPlanView);
+    document.getElementById('production-end-date').addEventListener('change', renderProductionPlanView);
+    document.getElementById('save-production-plan-btn').addEventListener('click', handleSaveProductionPlan);
+    document.getElementById('production-details').addEventListener('click', e => {
+      if (e.target.classList.contains('btn-execute-daily-production')) handleExecuteDailyProduction(e.target.dataset.date);
+    });
+    document.getElementById('export-data-btn').addEventListener('click', exportData);
+    document.getElementById('import-file').addEventListener('change', importData);
+    document.getElementById('modal-close-btn').addEventListener('click', () => {
+      document.getElementById('generic-modal').classList.add('hidden');
+      document.getElementById('modal-body').innerHTML = '';
+      document.getElementById('modal-footer').innerHTML = '';
+      currentProductionOrder = { items:[] };
+    });
+    document.getElementById('search-dish-input').addEventListener('input', renderDishesList);
+  };
+
+  // ══════════════════════════════════
+  //   RENDER FUNCTIONS (igual al original)
+  // ══════════════════════════════════
+  const renderAll = () => {
+    renderIngredientTypes(); renderIngredientsList(); renderClientsList(); renderDishesList();
+    renderDashboard(); renderInventoryList(); populateIngredientTypeSelector();
+    populateComponentSelector(); populatePurchaseDishSelector();
+    populateClientSelector('order-client-selector'); renderSavedOrders();
+    renderSavedShoppingLists(); renderProductionPlanView(); renderSavedProductionPlans();
+    renderCurrentProductionOrder();
+    document.getElementById('undo-btn').disabled = history.length === 0;
+  };
+
+  const renderDashboard = () => {
+    const fc = document.getElementById('dashboard-final-dishes-list');
+    const pc = document.getElementById('dashboard-preparations-list');
+    fc.innerHTML=''; pc.innerHTML='';
+    const finals = state.dishes.filter(d=>d.dishType!=='preparation');
+    const preps  = state.dishes.filter(d=>d.dishType==='preparation');
+    (finals.length===0 ? [fc.innerHTML='<p class="text-gray-500 col-span-full">Aún no has creado platos finales.</p>'] :
+      finals.forEach(d=>{ const c=calculateDishCost(d); const el=document.createElement('div');
+        el.className='p-4 border rounded-lg bg-white shadow-sm';
+        el.innerHTML=`<h3 class="font-bold text-lg text-orange-500">${d.name}</h3><p class="text-2xl font-light text-gray-800">${fmtCur(c)}</p>`;
+        fc.appendChild(el); }));
+    (preps.length===0 ? [pc.innerHTML='<p class="text-gray-500 col-span-full">Aún no has creado preparaciones.</p>'] :
+      preps.forEach(d=>{ const c=calculateDishCost(d); const el=document.createElement('div');
+        el.className='p-4 border rounded-lg bg-white shadow-sm';
+        el.innerHTML=`<h3 class="font-bold text-lg text-green-600">${d.name}</h3><p class="text-2xl font-light text-gray-800">${fmtCur(c)}</p>`;
+        pc.appendChild(el); }));
+  };
+
+  const renderIngredientTypes = () => {
+    const list = document.getElementById('ingredient-types-list');
+    list.innerHTML = '';
+    if (!state.ingredientTypes.length) { list.innerHTML='<p class="text-gray-500 italic text-sm">No hay tipos creados.</p>'; return; }
+    state.ingredientTypes.sort((a,b)=>a.name.localeCompare(b.name)).forEach(t=>{
+      const d=document.createElement('div');
+      d.className='flex justify-between items-center p-2 bg-gray-100 rounded text-sm';
+      d.innerHTML=`<span>${t.name}</span><button data-id="${t.id}" class="text-red-500 font-bold text-lg btn-del-type">&times;</button>`;
+      list.appendChild(d);
+    });
+    list.querySelectorAll('.btn-del-type').forEach(b=>b.addEventListener('click',e=>handleDeleteIngredientType(e.target.dataset.id)));
+  };
+
+  const renderIngredientsList = () => {
+    const term = document.getElementById('search-ingredient-input').value.toLowerCase();
+    const list = document.getElementById('ingredients-list');
+    list.innerHTML='';
+    const filtered = state.ingredients.filter(i=>i.name.toLowerCase().includes(term));
+    if (!filtered.length){ list.innerHTML='<tr><td colspan="6" class="text-center py-4 text-gray-500">No se encontraron ingredientes.</td></tr>'; return; }
+    const grouped = filtered.reduce((a,i)=>{ const k=i.typeId||'untyped'; (a[k]=a[k]||[]).push(i); return a; },{});
+    Object.keys(grouped).sort((a,b)=>{
+      if(a==='untyped') return 1; if(b==='untyped') return -1;
+      return (state.ingredientTypes.find(t=>t.id===a)?.name||'').localeCompare(state.ingredientTypes.find(t=>t.id===b)?.name||'');
+    }).forEach(tid=>{
+      const gname=(state.ingredientTypes.find(t=>t.id===tid)?.name)||'Sin Tipo';
+      const hr=document.createElement('tr');
+      hr.innerHTML=`<td colspan="6" class="px-6 py-2 bg-gray-100 text-gray-800 font-bold text-sm">${gname}</td>`;
+      list.appendChild(hr);
+      grouped[tid].sort((a,b)=>a.name.localeCompare(b.name)).forEach(ing=>{
+        const cost=getBaseUnitCost(ing);
+        const row=document.createElement('tr');
+        row.id=`ing-row-${ing.id}`;
+        row.innerHTML=`<td class="px-6 py-4 whitespace-nowrap">${ing.name}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${ing.purchaseUnit}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${fmtCur(ing.purchasePrice)}</td>
+          <td class="px-6 py-4 whitespace-nowrap font-semibold">${fmtCur(cost)} / ${ing.consumptionUnit}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${ing.minPurchaseQty||1}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+            <button class="text-blue-600 hover:text-blue-900 mr-4 btn-edit-ingredient" data-id="${ing.id}">Editar</button>
+            <button class="text-red-600 hover:text-red-900 btn-delete-ingredient" data-id="${ing.id}">Eliminar</button>
+          </td>`;
+        list.appendChild(row);
+      });
+    });
+    list.querySelectorAll('.btn-edit-ingredient').forEach(b=>b.addEventListener('click',e=>handleEditIngredient(e.target.dataset.id)));
+    list.querySelectorAll('.btn-delete-ingredient').forEach(b=>b.addEventListener('click',e=>handleDeleteIngredient(e.target.dataset.id)));
+  };
+
+  const renderClientsList = () => {
+    const list = document.getElementById('clients-list');
+    list.innerHTML='';
+    if (!state.clients.length){ list.innerHTML='<tr><td colspan="5" class="text-center py-4 text-gray-500">No hay clientes.</td></tr>'; return; }
+    state.clients.forEach(c=>{
+      const row=document.createElement('tr');
+      row.id=`client-row-${c.id}`;
+      row.innerHTML=`<td class="px-6 py-4 whitespace-nowrap">${c.name} ${c.lastname}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${c.contact}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${c.email}</td>
+        <td class="px-6 py-4 whitespace-nowrap">
+          <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${c.status==='activo'?'bg-green-100 text-green-800':'bg-red-100 text-red-800'}">${c.status}</span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+          <button class="text-blue-600 mr-4 btn-edit-client" data-id="${c.id}">Editar</button>
+          <button class="text-red-600 btn-delete-client" data-id="${c.id}">Eliminar</button>
+        </td>`;
+      list.appendChild(row);
+    });
+    list.querySelectorAll('.btn-edit-client').forEach(b=>b.addEventListener('click',e=>handleEditClient(e.target.dataset.id)));
+    list.querySelectorAll('.btn-delete-client').forEach(b=>b.addEventListener('click',e=>handleDeleteClient(e.target.dataset.id)));
+  };
+
+  const renderDishesList = () => {
+    const fl=document.getElementById('final-dishes-list');
+    const pl=document.getElementById('preparations-list');
+    const term=document.getElementById('search-dish-input').value.toLowerCase();
+    fl.innerHTML=''; pl.innerHTML='';
+    if (!state.dishes.length){ fl.innerHTML='<p class="text-gray-500 text-center">No hay platos creados.</p>'; return; }
+    const filtered=state.dishes.filter(d=>d.name.toLowerCase().includes(term));
+    const finals=filtered.filter(d=>d.dishType!=='preparation');
+    const preps=filtered.filter(d=>d.dishType==='preparation');
+
+    const mkCard = dish => {
+      const cost=calculateDishCost(dish);
+      const compsHtml=dish.components.map(comp=>{
+        let name='[Eliminado]',unit='un',cc=0;
+        if(comp.type==='ingredient'){ const i=state.ingredients.find(x=>x.id===comp.id);
+          if(i){name=i.name;unit=comp.unit||i.consumptionUnit;cc=getBaseUnitCost(i)*comp.quantity;} }
+        else{ const s=state.dishes.find(x=>x.id===comp.id);
+          if(s){name=`(${s.dishType==='preparation'?'Prep.':'Plato'}) ${s.name}`;unit='un';cc=calculateDishCost(s)*comp.quantity;} }
+        return `<li class="text-sm text-gray-600 flex justify-between">
+          <span>${comp.quantity} ${unit} de ${name}</span>
+          <span class="font-semibold">${fmtCur(cc)}</span></li>`;
+      }).join('');
+      const tl=dish.dishType==='preparation'?'Preparación / Acompañante':'Plato Final';
+      const card=document.createElement('div');
+      card.className='p-4 border rounded-lg bg-white shadow-sm';
+      card.innerHTML=`<div class="flex justify-between items-start">
+        <div><h3 class="font-bold text-lg text-orange-500">${dish.name} <span class="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full">${tl}</span></h3>
+          <div class="flex justify-between items-baseline border-b pb-1 mb-2">
+            <p class="font-semibold text-gray-800">Costo Total:</p>
+            <p class="font-bold text-gray-900 text-lg">${fmtCur(cost)}</p>
+          </div>
+          <ul class="list-none mt-2 space-y-1">${compsHtml}</ul>
+        </div>
+        <div class="flex flex-col gap-2">
+          <button class="text-blue-600 font-semibold btn-edit-dish" data-id="${dish.id}">Editar</button>
+          <button class="text-red-600 font-semibold btn-delete-dish" data-id="${dish.id}">Eliminar</button>
+        </div></div>`;
+      card.querySelector('.btn-edit-dish').addEventListener('click',()=>handleEditDish(dish.id));
+      card.querySelector('.btn-delete-dish').addEventListener('click',()=>handleDeleteDish(dish.id));
+      return card;
+    };
+
+    if(!finals.length) fl.innerHTML='<p class="text-gray-500 text-center">No se encontraron platos finales.</p>';
+    else finals.forEach(d=>fl.appendChild(mkCard(d)));
+    if(!preps.length) pl.innerHTML='<p class="text-gray-500 text-center">No se encontraron preparaciones.</p>';
+    else preps.forEach(d=>pl.appendChild(mkCard(d)));
+  };
+
+  const renderSavedOrders = () => {
+    const list=document.getElementById('dishes-to-produce-list');
+    const mf=document.getElementById('month-filter').value;
+    const sb=document.getElementById('order-sort-by').value;
+    list.innerHTML='';
+    const filtered=state.customerOrders.filter(o=>mf==='all'||o.date?.startsWith(mf));
+    if(!filtered.length){ list.innerHTML='<p class="text-gray-500 italic text-sm">No hay pedidos guardados para este mes.</p>'; return; }
+    let grouped={};
+    if(sb==='date') grouped=filtered.reduce((a,o)=>{ (a[o.date]=a[o.date]||[]).push(o); return a; },{});
+    else grouped=filtered.reduce((a,o)=>{ const k=o.clientId||'no-client'; (a[k]=a[k]||[]).push(o); return a; },{});
+    const keys=Object.keys(grouped).sort((a,b)=>{
+      if(sb==='date') return a.localeCompare(b);
+      if(a==='no-client') return 1; if(b==='no-client') return -1;
+      const na=(grouped[a].find(o=>o.clientName)||{}).clientName||'';
+      const nb=(grouped[b].find(o=>o.clientName)||{}).clientName||'';
+      return na.localeCompare(nb);
+    });
+    keys.forEach(key=>{
+      const orders=grouped[key].sort((a,b)=>sb==='date'?(a.clientName||'').localeCompare(b.clientName||''):a.date.localeCompare(b.date));
+      const gh=document.createElement('div'); gh.className='mt-4';
+      gh.innerHTML=`<h4 class="font-bold text-md text-orange-500 bg-orange-50 p-2 rounded-t-lg">${sb==='date'?fmtDate(key):(key==='no-client'?'Pedidos Sin Cliente':(orders[0].clientName||'Sin Cliente'))}</h4>`;
+      list.appendChild(gh);
+      const gc=document.createElement('div'); gc.className='border border-orange-100 rounded-b-lg p-2 space-y-3';
+      orders.forEach(order=>{
+        const items=Array.isArray(order.items)?order.items:[];
+        const iHtml=items.map(i=>`<li class="flex justify-between items-center pl-4 text-xs"><span>${i.quantity} x ${i.name}</span><span class="font-mono">${fmtCur(i.unitCost)} c/u</span></li>`).join('');
+        const ci=sb==='date'&&order.clientId?`<span class="text-xs text-gray-600">Cliente: ${order.clientName}</span>`:'';
+        const di=sb==='client'?`<span class="text-xs text-gray-600">${fmtDate(order.date)}</span>`:'';
+        const od=document.createElement('div'); od.className='p-3 bg-white rounded shadow-sm border border-gray-200';
+        od.innerHTML=`<div class="flex justify-between items-start mb-2 border-b pb-1">
+          <div class="flex flex-col"><p class="font-semibold text-sm text-gray-800">Orden ID: ${order.shortId||'N/A'}</p>${di}${ci}</div>
+          <div class="text-right"><p class="font-bold text-lg text-green-700">${fmtCur(order.totalCost)}</p>
+            <button type="button" data-id="${order.id}" class="btn-edit-order text-blue-600 text-xs mr-2">Editar</button>
+            <button type="button" data-id="${order.id}" class="btn-delete-order text-red-500 font-bold text-sm">&times;</button>
+          </div></div>
+          <ul class="list-disc list-inside space-y-1">${iHtml}</ul>`;
+        gc.appendChild(od);
+      });
+      list.appendChild(gc);
+    });
+    list.querySelectorAll('.btn-edit-order').forEach(b=>b.addEventListener('click',e=>handleEditOrder(e.target.dataset.id)));
+    list.querySelectorAll('.btn-delete-order').forEach(b=>b.addEventListener('click',e=>{
+      const ns=JSON.parse(JSON.stringify(state));
+      ns.customerOrders=ns.customerOrders.filter(o=>o.id!==e.target.dataset.id);
+      updateState(ns);
+    }));
+  };
+
+  const renderSavedShoppingLists = () => {
+    const c=document.getElementById('saved-shopping-lists'); c.innerHTML='';
+    if(!state.savedShoppingLists.length){ c.innerHTML='<p class="italic text-gray-500 text-sm">No hay listas guardadas.</p>'; return; }
+    state.savedShoppingLists.slice().reverse().forEach(l=>{
+      const card=document.createElement('div'); card.className='p-3 bg-white border rounded-md text-sm';
+      const dd=l.range.start===l.range.end?`Lista del ${l.range.start}`:`Lista del ${l.range.start} al ${l.range.end}`;
+      card.innerHTML=`<div class="flex justify-between items-center">
+        <div><p class="font-semibold">${dd}</p>
+          <p class="text-xs text-gray-500">Generada: ${new Date(l.createdAt).toLocaleString('es-ES')}</p>
+          <div class="flex items-center gap-2 mt-1"><p class="font-bold text-lg">${fmtCur(l.totalCost)}</p>
+            <span class="text-xs font-semibold px-2 py-1 rounded-full ${l.status==='completed'?'bg-green-100 text-green-800':'bg-yellow-100 text-yellow-800'}">${l.status==='completed'?'Completada':'Pendiente'}</span>
+          </div></div>
+        <div class="flex gap-2">
+          <button data-id="${l.id}" class="btn-view-list py-1 px-3 text-xs rounded btn-primary">Ver</button>
+          <button data-id="${l.id}" class="btn-export-pdf py-1 px-3 text-xs rounded btn-secondary">PDF</button>
+          <button data-id="${l.id}" class="btn-export-csv py-1 px-3 text-xs rounded btn-secondary">CSV</button>
+          <button data-id="${l.id}" class="btn-delete-list text-red-500 font-bold text-lg">&times;</button>
+        </div></div>`;
+      c.appendChild(card);
+    });
+    c.querySelectorAll('.btn-view-list').forEach(b=>b.addEventListener('click',e=>handleViewShoppingList(e.target.dataset.id)));
+    c.querySelectorAll('.btn-export-pdf').forEach(b=>b.addEventListener('click',e=>handleExportShoppingListPDF(e.target.dataset.id)));
+    c.querySelectorAll('.btn-export-csv').forEach(b=>b.addEventListener('click',e=>handleExportShoppingListCSV(e.target.dataset.id)));
+    c.querySelectorAll('.btn-delete-list').forEach(b=>b.addEventListener('click',e=>{
+      const ns=JSON.parse(JSON.stringify(state));
+      ns.savedShoppingLists=ns.savedShoppingLists.filter(x=>x.id!==e.target.dataset.id);
+      updateState(ns);
+    }));
+  };
+
+  const renderProductionPlanView = () => {
+    const sd=document.getElementById('production-start-date').value;
+    const ed=document.getElementById('production-end-date').value;
+    const c=document.getElementById('production-details'); c.innerHTML='';
+    if(!sd||!ed||sd>ed){ c.innerHTML='<p class="text-gray-500">Por favor, selecciona un rango de fechas válido.</p>'; return; }
+    const orders=state.customerOrders.filter(o=>o.date>=sd&&o.date<=ed);
+    if(!orders.length){ c.innerHTML='<p class="text-gray-500">No hay producción planificada para este rango.</p>'; return; }
+    const byDate=orders.reduce((a,o)=>{ (a[o.date]=a[o.date]||[]).push(o); return a; },{});
+    const getBI=(dishId,mult)=>{
+      const dish=state.dishes.find(d=>d.id===dishId); const ings={};
+      if(!dish) return ings;
+      const dive=(cd,m)=>cd.components.forEach(comp=>{
+        if(comp.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===comp.id);
+          if(ing){ if(!ings[comp.id]) ings[comp.id]={quantity:0,name:ing.name,unit:ing.consumptionUnit};
+            ings[comp.id].quantity+=comp.quantity*m; }
+        } else { const sub=state.dishes.find(d=>d.id===comp.id); if(sub) dive(sub,comp.quantity*m); }
+      });
+      dive(dish,mult); return ings;
+    };
+    Object.keys(byDate).sort().forEach(date=>{
+      const dailyOrders=byDate[date];
+      const isExec=state.executedProductions.includes(date);
+      const totalIngs={};
+      dailyOrders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
+        const di=getBI(it.id,it.quantity);
+        Object.keys(di).forEach(k=>{ if(!totalIngs[k]) totalIngs[k]={...di[k]}; else totalIngs[k].quantity+=di[k].quantity; });
+      }));
+      let html=`<div class="p-4 border rounded-lg bg-gray-50 shadow-lg mb-8">
+        <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-300">
+          <h3 class="text-xl font-bold text-gray-800">${fmtDate(date)}</h3>
+          ${isExec?'<span class="px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">Producción Ejecutada</span>'
+            :`<button data-date="${date}" class="btn-execute-daily-production py-2 px-4 rounded-lg font-semibold bg-yellow-500 text-white text-sm">Ejecutar Producción</button>`}
+        </div>
+        <div class="card p-3 mb-6 border border-orange-200 bg-white">
+          <h4 class="font-bold text-lg text-orange-500 mb-3">Total de Ingredientes a Alistar</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">`;
+      Object.values(totalIngs).sort((a,b)=>a.name.localeCompare(b.name)).forEach(i=>{
+        html+=`<div class="flex justify-between border-b border-gray-100 py-1"><span>${i.name}</span><span class="font-mono font-semibold">${i.quantity.toFixed(2)} ${i.unit}</span></div>`;
+      });
+      html+=`</div></div><h4 class="font-semibold text-xl text-gray-800 mb-4 border-b pb-2">Desglose por Pedido:</h4>`;
+      dailyOrders.sort((a,b)=>(a.clientName||'').localeCompare(b.clientName||'')).forEach(order=>{
+        const items=Array.isArray(order.items)?order.items:[];
+        const iHtml=items.map(it=>`<li class="flex justify-between text-xs py-0.5"><span class="font-bold">${it.quantity} x ${it.name}</span><span class="text-gray-600">${fmtCur(it.unitCost)} c/u</span></li>`).join('');
+        let ingHtml='';
+        items.forEach(it=>{ const di=getBI(it.id,it.quantity);
+          const ilist=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<div class="flex justify-between border-b border-gray-100 py-0.5 text-xs"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></div>`).join('');
+          if(ilist) ingHtml+=`<div class="mb-2"><h6 class="font-bold text-xs text-gray-800 bg-gray-100 p-1 rounded">Para ${it.quantity} x ${it.name}:</h6><div class="space-y-0.5 pt-1 pl-2">${ilist}</div></div>`;
+        });
+        html+=`<div class="p-3 bg-white rounded border mb-4 shadow-md">
+          <div class="flex justify-between items-center border-b pb-1 mb-2">
+            <div class="text-sm"><p class="font-bold text-gray-800">Orden ID: ${order.shortId||'N/A'}</p>
+              <p class="text-xs text-gray-600">${order.clientId?`<span class="text-orange-500 font-semibold">${order.clientName}</span>`:'Sin Cliente'}</p>
+            </div>
+            <p class="font-bold text-lg text-green-700">${fmtCur(order.totalCost)}</p>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Platos a Empacar:</h5><ul class="list-disc list-inside space-y-0.5 pl-2">${iHtml}</ul></div>
+            <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Ingredientes (por Plato):</h5><div class="space-y-2">${ingHtml}</div></div>
+          </div></div>`;
+      });
+      html+='</div>';
+      c.innerHTML+=html;
+    });
+  };
+
+  const renderSavedProductionPlans = () => {
+    const c=document.getElementById('saved-production-plans'); c.innerHTML='';
+    if(!state.savedProductionPlans.length){ c.innerHTML='<p class="italic text-gray-500 text-sm">No hay planes guardados.</p>'; return; }
+    state.savedProductionPlans.slice().reverse().forEach(p=>{
+      const card=document.createElement('div'); card.className='p-3 bg-white border rounded-md text-sm';
+      const dd=typeof p.date==='object'&&p.date.start?`Plan para ${p.date.start} al ${p.date.end}`:`Plan para el ${p.date}`;
+      card.innerHTML=`<div class="flex justify-between items-center">
+        <div><p class="font-semibold">${dd}</p><p class="text-xs text-gray-500">Guardado: ${new Date(p.createdAt).toLocaleString('es-ES')}</p></div>
+        <div class="flex gap-2 items-center">
+          <button data-id="${p.id}" class="btn-view-plan py-1 px-3 text-xs rounded btn-primary">Ver</button>
+          <button data-id="${p.id}" class="btn-export-prod-pdf py-1 px-3 text-xs rounded btn-secondary">PDF</button>
+          <button data-id="${p.id}" class="btn-export-prod-csv py-1 px-3 text-xs rounded btn-secondary">CSV (Platos)</button>
+          <button data-id="${p.id}" class="btn-export-prod-ing-csv py-1 px-3 text-xs rounded btn-secondary">Ingredientes CSV</button>
+          <button data-id="${p.id}" class="btn-export-prod-consolidado-csv py-1 px-3 text-xs rounded btn-secondary">Consolidado CSV</button>
+          <button data-id="${p.id}" class="btn-execute-plan py-1 px-3 text-xs rounded ${p.isExecuted?'bg-green-500 text-white cursor-not-allowed':'bg-yellow-500 text-white'}" ${p.isExecuted?'disabled':''}>${p.isExecuted?'Ejecutado':'Ejecutar'}</button>
+          <button data-id="${p.id}" class="btn-delete-plan text-red-500 font-bold text-lg">&times;</button>
+        </div></div>`;
+      c.appendChild(card);
+    });
+    c.querySelectorAll('.btn-view-plan').forEach(b=>b.addEventListener('click',e=>handleViewProductionPlan(e.target.dataset.id)));
+    c.querySelectorAll('.btn-export-prod-pdf').forEach(b=>b.addEventListener('click',e=>handleExportProductionPDF(e.target.dataset.id)));
+    c.querySelectorAll('.btn-export-prod-csv').forEach(b=>b.addEventListener('click',e=>handleExportProductionCSV(e.target.dataset.id)));
+    c.querySelectorAll('.btn-export-prod-ing-csv').forEach(b=>b.addEventListener('click',e=>handleExportProductionIngredientsCSV(e.target.dataset.id)));
+    c.querySelectorAll('.btn-export-prod-consolidado-csv').forEach(b=>b.addEventListener('click',e=>handleExportConsolidatedProductionCSV(e.target.dataset.id)));
+    c.querySelectorAll('.btn-execute-plan').forEach(b=>b.addEventListener('click',e=>handleExecuteProductionPlan(e.target.dataset.id)));
+    c.querySelectorAll('.btn-delete-plan').forEach(b=>b.addEventListener('click',e=>{
+      const ns=JSON.parse(JSON.stringify(state));
+      ns.savedProductionPlans=ns.savedProductionPlans.filter(x=>x.id!==e.target.dataset.id);
+      updateState(ns);
+    }));
+  };
+
+  const renderInventoryList = () => {
+    const list=document.getElementById('inventory-list');
+    const term=document.getElementById('search-inventory-input').value.toLowerCase();
+    list.innerHTML='';
+    const filtered=state.ingredients.filter(i=>i.name.toLowerCase().includes(term));
+    if(!filtered.length){ list.innerHTML='<tr><td colspan="5" class="text-center py-4 text-gray-500">No hay ingredientes.</td></tr>'; return; }
+    filtered.sort((a,b)=>a.name.localeCompare(b.name)).forEach(ing=>{
+      const row=document.createElement('tr');
+      row.innerHTML=`<td class="px-6 py-4 whitespace-nowrap">${ing.name}</td>
+        <td class="px-6 py-4 whitespace-nowrap font-bold">${ing.inventoryQty.toFixed(2)}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${ing.consumptionUnit}</td>
+        <td class="px-6 py-4 whitespace-nowrap">
+          <div class="flex items-center gap-2">
+            <input type="number" step="any" placeholder="Cantidad" class="w-24 border-gray-300 rounded-md shadow-sm text-sm" id="inv-qty-${ing.id}">
+            <select class="w-28 border-gray-300 rounded-md shadow-sm text-sm" id="inv-unit-${ing.id}">
+              <option value="purchase">${ing.purchaseUnit}</option>
+              <option value="consumption">${ing.consumptionUnit}</option>
+            </select>
+          </div></td>
+        <td class="px-6 py-4 whitespace-nowrap text-right">
+          <div class="flex flex-col sm:flex-row gap-2 justify-end">
+            <button data-id="${ing.id}" class="btn-add-purchase py-1 px-3 text-xs rounded btn-primary">Añadir</button>
+            <button data-id="${ing.id}" class="btn-adjust-stock py-1 px-3 text-xs rounded btn-secondary">Ajustar</button>
+          </div></td>`;
+      list.appendChild(row);
+    });
+    list.querySelectorAll('.btn-add-purchase').forEach(b=>b.addEventListener('click',e=>handleAddInventoryPurchase(e.target.dataset.id)));
+    list.querySelectorAll('.btn-adjust-stock').forEach(b=>b.addEventListener('click',e=>handleAdjustInventoryStock(e.target.dataset.id)));
+  };
+
+  // ──────────────────── POPULATORS ────────────────────
+  const populateMonthFilter = () => {
+    const sel=document.getElementById('month-filter');
+    sel.innerHTML='<option value="all">Todos los Meses</option>';
+    const months=[...new Set(state.customerOrders.filter(d=>d.date).map(d=>d.date.substring(0,7)))];
+    months.sort().reverse().forEach(m=>{
+      const d=new Date(m+'-02');
+      sel.innerHTML+=`<option value="${m}">${d.toLocaleString('es-ES',{month:'long',year:'numeric'})}</option>`;
+    });
+  };
+  const populateIngredientTypeSelector = (id='ingredient-type-selector') => {
+    const sel=document.getElementById(id); sel.innerHTML='<option value="">Sin Tipo</option>';
+    state.ingredientTypes.sort((a,b)=>a.name.localeCompare(b.name)).forEach(t=>sel.innerHTML+=`<option value="${t.id}">${t.name}</option>`);
+  };
+  const populateComponentSelector = () => {
+    const sel=document.getElementById('component-selector'); sel.innerHTML='';
+    const grouped=state.ingredients.reduce((a,i)=>{ const k=i.typeId||'untyped'; (a[k]=a[k]||[]).push(i); return a; },{});
+    Object.keys(grouped).sort((a,b)=>{ if(a==='untyped') return 1; if(b==='untyped') return -1;
+      return (state.ingredientTypes.find(t=>t.id===a)?.name||'').localeCompare(state.ingredientTypes.find(t=>t.id===b)?.name||'');
+    }).forEach(tid=>{
+      const g=document.createElement('optgroup');
+      g.label=(state.ingredientTypes.find(t=>t.id===tid)?.name)||'Ingredientes Sin Tipo';
+      grouped[tid].sort((a,b)=>a.name.localeCompare(b.name)).forEach(i=>{
+        const o=document.createElement('option');
+        o.value=`ingredient-${i.id}`;
+        o.textContent=`${i.name} (${fmtCur(getBaseUnitCost(i))}/${i.consumptionUnit})`;
+        g.appendChild(o);
+      });
+      sel.appendChild(g);
+    });
+    const preps=state.dishes.filter(d=>d.dishType==='preparation');
+    if(preps.length){ const pg=document.createElement('optgroup'); pg.label='Preparaciones / Acompañantes';
+      preps.forEach(d=>{ const o=document.createElement('option'); o.value=`dish-${d.id}`; o.textContent=d.name; pg.appendChild(o); });
+      sel.appendChild(pg); }
+    updateManualUnitSelector();
+  };
+  const populatePurchaseDishSelector = () => {
+    const sel=document.getElementById('purchase-dish-selector');
+    sel.innerHTML='<option value="">Selecciona un plato…</option>';
+    const all=state.dishes.map(d=>({...d,cost:calculateDishCost(d)})).sort((a,b)=>a.name.localeCompare(b.name));
+    const finals=all.filter(d=>d.dishType!=='preparation');
+    const preps=all.filter(d=>d.dishType==='preparation');
+    if(finals.length){ const g=document.createElement('optgroup'); g.label='Platos Finales';
+      finals.forEach(d=>{ const o=document.createElement('option'); o.value=d.id; o.textContent=`${d.name} (${fmtCur(d.cost)})`; g.appendChild(o); }); sel.appendChild(g); }
+    if(preps.length){ const g=document.createElement('optgroup'); g.label='Preparaciones / Acompañantes';
+      preps.forEach(d=>{ const o=document.createElement('option'); o.value=d.id; o.textContent=`${d.name} (${fmtCur(d.cost)})`; g.appendChild(o); }); sel.appendChild(g); }
+  };
+  const populateClientSelector = (id='order-client-selector') => {
+    const sel=document.getElementById(id); sel.innerHTML='<option value="">Ninguno</option>';
+    state.clients.filter(c=>c.status==='activo').sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{
+      const o=document.createElement('option'); o.value=c.id; o.textContent=`${c.name} ${c.lastname}`; sel.appendChild(o);
+    });
+  };
+  const updateManualUnitSelector = () => {
+    const sel=document.getElementById('component-selector');
+    const mu=document.getElementById('component-manual-unit');
+    if(!sel.value){ mu.value='un'; mu.disabled=true; return; }
+    const [type,...rest]=sel.value.split('-'); const id=rest.join('-');
+    if(type==='ingredient'){ const i=state.ingredients.find(x=>x.id===id);
+      if(i){ mu.value=i.consumptionUnit; mu.disabled=false; }
+    } else { mu.value='un'; mu.disabled=true; }
+  };
+
+  // ──────────────────── EVENT HANDLERS ────────────────────
+  const handleAddIngredientType = e => {
+    e.preventDefault();
+    const inp=document.getElementById('ingredient-type-name');
+    const name=inp.value.trim();
+    if(name&&!state.ingredientTypes.some(t=>t.name.toLowerCase()===name.toLowerCase())){
+      const ns=JSON.parse(JSON.stringify(state));
+      ns.ingredientTypes.push({id:`type-${Date.now()}`,name});
+      updateState(ns); inp.value='';
+    }
+  };
+  const handleDeleteIngredientType = id => {
+    const ns=JSON.parse(JSON.stringify(state));
+    ns.ingredientTypes=ns.ingredientTypes.filter(t=>t.id!==id);
+    ns.ingredients.forEach(i=>{ if(i.typeId===id) i.typeId=null; });
+    updateState(ns);
+  };
+  const handleAddIngredient = e => {
+    e.preventDefault();
+    const ni={
+      id:`ing-${Date.now()}`,
+      name:document.getElementById('ingredient-name').value,
+      typeId:document.getElementById('ingredient-type-selector').value||null,
+      purchaseUnit:document.getElementById('ingredient-purchase-unit').value,
+      purchasePrice:parseFloat(document.getElementById('ingredient-purchase-price').value),
+      consumptionUnit:document.getElementById('ingredient-consumption-unit').value,
+      consumptionQty:parseFloat(document.getElementById('ingredient-consumption-qty').value),
+      yield:parseFloat(document.getElementById('ingredient-yield').value),
+      minPurchaseQty:parseFloat(document.getElementById('ingredient-min-purchase-qty').value)||1,
+      inventoryQty:0,
+    };
+    if(ni.name&&!isNaN(ni.purchasePrice)&&!isNaN(ni.consumptionQty)){
+      const ns=JSON.parse(JSON.stringify(state)); ns.ingredients.push(ni); updateState(ns); e.target.reset();
+    }
+  };
+  const handleDeleteIngredient = id => {
+    const ns=JSON.parse(JSON.stringify(state));
+    ns.ingredients=ns.ingredients.filter(i=>i.id!==id);
+    ns.dishes.forEach(d=>{ d.components=d.components.filter(c=>!(c.type==='ingredient'&&c.id===id)); });
+    updateState(ns);
+  };
+  const handleEditIngredient = id => {
+    const ing=state.ingredients.find(i=>i.id===id);
+    const row=document.getElementById(`ing-row-${id}`);
+    if(!ing||!row) return;
+    let to='<option value="">Sin Tipo</option>';
+    state.ingredientTypes.sort((a,b)=>a.name.localeCompare(b.name)).forEach(t=>to+=`<option value="${t.id}" ${ing.typeId===t.id?'selected':''}>${t.name}</option>`);
+    row.classList.add('bg-blue-50');
+    row.innerHTML=`<td class="px-2 py-4" colspan="6"><div class="space-y-4 p-4 border-2 border-blue-200 rounded-lg bg-white">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div><label class="text-xs">Nombre</label><input type="text" value="${ing.name}" class="mt-1 w-full border rounded px-2 py-1" data-field="name"></div>
+        <div><label class="text-xs">Tipo</label><select class="mt-1 w-full border rounded px-2 py-1" data-field="typeId">${to}</select></div>
+        <div><label class="text-xs">Ud. Compra</label><input type="text" value="${ing.purchaseUnit}" class="mt-1 w-full border rounded px-2 py-1" data-field="purchaseUnit"></div>
+        <div><label class="text-xs">Precio Compra</label><input type="number" step="any" value="${ing.purchasePrice}" class="mt-1 w-full border rounded px-2 py-1" data-field="purchasePrice"></div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div><label class="text-xs">Ud. Consumo</label><select class="mt-1 w-full border rounded px-2 py-1" data-field="consumptionUnit">
+          <option value="g" ${ing.consumptionUnit==='g'?'selected':''}>Gramos (g)</option>
+          <option value="ml" ${ing.consumptionUnit==='ml'?'selected':''}>Mililitros (ml)</option>
+          <option value="un" ${ing.consumptionUnit==='un'?'selected':''}>Unidades (un)</option>
+        </select></div>
+        <div><label class="text-xs">Cantidad por Compra</label><input type="number" step="any" value="${ing.consumptionQty}" class="mt-1 w-full border rounded px-2 py-1" data-field="consumptionQty"></div>
+        <div><label class="text-xs">Rendimiento %</label><input type="number" step="any" value="${ing.yield}" class="mt-1 w-full border rounded px-2 py-1" data-field="yield"></div>
+        <div><label class="text-xs">Cant. Mín. Compra</label><input type="number" step="any" value="${ing.minPurchaseQty||1}" class="mt-1 w-full border rounded px-2 py-1" data-field="minPurchaseQty"></div>
+      </div>
+      <div class="flex gap-2 justify-end mt-4">
+        <button class="text-white bg-green-600 py-2 px-4 rounded btn-save-ingredient">Guardar</button>
+        <button class="text-white bg-gray-500 py-2 px-4 rounded btn-cancel-edit">Cancelar</button>
+      </div></div></td>`;
+    row.querySelector('.btn-save-ingredient').addEventListener('click',()=>handleUpdateIngredient(id,{
+      name:row.querySelector('[data-field="name"]').value,
+      typeId:row.querySelector('[data-field="typeId"]').value||null,
+      purchaseUnit:row.querySelector('[data-field="purchaseUnit"]').value,
+      purchasePrice:parseFloat(row.querySelector('[data-field="purchasePrice"]').value),
+      consumptionUnit:row.querySelector('[data-field="consumptionUnit"]').value,
+      consumptionQty:parseFloat(row.querySelector('[data-field="consumptionQty"]').value),
+      yield:parseFloat(row.querySelector('[data-field="yield"]').value),
+      minPurchaseQty:parseFloat(row.querySelector('[data-field="minPurchaseQty"]').value)||1,
+    }));
+    row.querySelector('.btn-cancel-edit').addEventListener('click',()=>renderIngredientsList());
+  };
+  const handleUpdateIngredient = (id,data) => {
+    const ns=JSON.parse(JSON.stringify(state));
+    const i=ns.ingredients.findIndex(x=>x.id===id);
+    if(i>-1){ ns.ingredients[i]={...ns.ingredients[i],...data}; updateState(ns); }
+  };
+
+  const handleAddComponentToDish = () => {
+    const sel=document.getElementById('component-selector');
+    const qty=parseFloat(document.getElementById('component-quantity').value);
+    const mu=document.getElementById('component-manual-unit');
+    if(!sel.value||isNaN(qty)||qty<=0) return;
+    const [type,...rest]=sel.value.split('-'); const id=rest.join('-');
+    let comp=null;
+    if(type==='ingredient'){ const i=state.ingredients.find(x=>x.id===id);
+      if(i) comp={id:i.id,type:'ingredient',quantity:qty,name:i.name,unit:mu.value};
+    } else { const d=state.dishes.find(x=>x.id===id);
+      if(d) comp={id:d.id,type:'dish',quantity:qty,name:d.name,unit:'un'}; }
+    if(comp){ comp.tempId=`comp-${Date.now()}-${Math.random()}`; currentDishComponents.push(comp); renderCurrentDishComponents(); document.getElementById('component-quantity').value='1'; }
+  };
+  const handleDeleteComponent = e => { currentDishComponents=currentDishComponents.filter(c=>c.tempId!==e.target.dataset.id); renderCurrentDishComponents(); };
+  const handleEditComponent = e => { const c=currentDishComponents.find(x=>x.tempId===e.target.dataset.id); if(c){c.isEditing=true;renderCurrentDishComponents();} };
+  const handleSaveComponentEdit = e => {
+    const idx=currentDishComponents.findIndex(c=>c.tempId===e.target.dataset.id);
+    if(idx>-1){
+      const el=e.target.closest('.flex.items-center.justify-between');
+      const nq=parseFloat(el.querySelector('.component-edit-quantity').value);
+      if(!isNaN(nq)&&nq>0){
+        currentDishComponents[idx].quantity=nq;
+        if(currentDishComponents[idx].type==='ingredient') currentDishComponents[idx].unit=el.querySelector('.component-edit-unit').value;
+        delete currentDishComponents[idx].isEditing; renderCurrentDishComponents();
+      }
+    }
+  };
+  const handleCancelComponentEdit = e => { const c=currentDishComponents.find(x=>x.tempId===e.target.dataset.id); if(c){delete c.isEditing;renderCurrentDishComponents();} };
+
+  const renderCurrentDishComponents = () => {
+    const list=document.getElementById('dish-components-list'); list.innerHTML='';
+    currentDishComponents.forEach(comp=>{
+      const item=document.createElement('div');
+      item.className='flex items-center justify-between p-2 bg-gray-100 rounded text-sm';
+      if(comp.isEditing){
+        const us=comp.type==='ingredient'
+          ?`<select class="w-20 border-gray-300 rounded-md shadow-sm component-edit-unit">
+              <option value="g" ${comp.unit==='g'?'selected':''}>g</option>
+              <option value="ml" ${comp.unit==='ml'?'selected':''}>ml</option>
+              <option value="un" ${comp.unit==='un'?'selected':''}>un</option>
+            </select>`:`<span class="w-20 text-center">${comp.unit}</span>`;
+        item.innerHTML=`<div class="flex-grow flex items-center gap-2"><span>${comp.name}</span></div>
+          <div class="flex items-center gap-2">
+            <input type="number" value="${comp.quantity}" min="0.01" step="any" class="w-24 border-gray-300 rounded-md shadow-sm component-edit-quantity">
+            ${us}
+            <button type="button" data-id="${comp.tempId}" class="text-green-600 font-semibold btn-save-component-edit">Guardar</button>
+            <button type="button" data-id="${comp.tempId}" class="text-gray-600 font-semibold btn-cancel-component-edit">Cancelar</button>
+          </div>`;
+      } else {
+        item.innerHTML=`<span>${comp.quantity} ${comp.unit||'un'} - ${comp.name}</span>
+          <div class="flex gap-4">
+            <button type="button" data-id="${comp.tempId}" class="text-blue-600 font-semibold text-xs btn-edit-component">Editar</button>
+            <button type="button" data-id="${comp.tempId}" class="text-red-500 font-bold text-lg btn-delete-component">&times;</button>
+          </div>`;
+      }
+      list.appendChild(item);
+    });
+    list.querySelectorAll('.btn-delete-component').forEach(b=>b.addEventListener('click',handleDeleteComponent));
+    list.querySelectorAll('.btn-edit-component').forEach(b=>b.addEventListener('click',handleEditComponent));
+    list.querySelectorAll('.btn-save-component-edit').forEach(b=>b.addEventListener('click',handleSaveComponentEdit));
+    list.querySelectorAll('.btn-cancel-component-edit').forEach(b=>b.addEventListener('click',handleCancelComponentEdit));
+  };
+
+  const resetDishForm = () => {
+    editingDishId=null;
+    document.getElementById('dish-form').reset();
+    document.getElementById('dish-form-title').textContent='Crear Nuevo Plato';
+    document.getElementById('submit-dish-btn').textContent='Crear Plato';
+    currentDishComponents=[]; renderCurrentDishComponents();
+    const cb=document.getElementById('cancel-edit-dish-btn'); if(cb) cb.remove();
+  };
+  const handleSubmitDishForm = e => {
+    e.preventDefault();
+    const name=document.getElementById('dish-name').value;
+    const dt=document.getElementById('dish-type').value;
+    if(!name||!currentDishComponents.length) return;
+    const fc=currentDishComponents.map(({tempId,isEditing,...rest})=>rest);
+    const ns=JSON.parse(JSON.stringify(state));
+    if(editingDishId){
+      const i=ns.dishes.findIndex(d=>d.id===editingDishId);
+      if(i>-1){ns.dishes[i].name=name;ns.dishes[i].dishType=dt;ns.dishes[i].components=fc;}
+    } else { ns.dishes.push({id:`dish-${Date.now()}`,name,dishType:dt,components:fc}); }
+    updateState(ns); resetDishForm();
+  };
+  const handleEditDish = id => {
+    const dish=state.dishes.find(d=>d.id===id); if(!dish) return;
+    editingDishId=id;
+    document.getElementById('dish-form-title').textContent=`Editando: ${dish.name}`;
+    document.getElementById('dish-name').value=dish.name;
+    document.getElementById('dish-type').value=dish.dishType||'final';
+    currentDishComponents=JSON.parse(JSON.stringify(dish.components)).map(c=>({...c,tempId:`comp-${Date.now()}-${Math.random()}`}));
+    renderCurrentDishComponents();
+    document.getElementById('submit-dish-btn').textContent='Guardar Cambios';
+    const fb=document.getElementById('dish-form-buttons');
+    if(!document.getElementById('cancel-edit-dish-btn')){
+      const cb=document.createElement('button'); cb.type='button'; cb.id='cancel-edit-dish-btn';
+      cb.textContent='Cancelar'; cb.className='py-2 px-6 rounded-lg font-semibold btn-secondary';
+      cb.onclick=resetDishForm; fb.appendChild(cb);
+    }
+    document.getElementById('dish-form-title').scrollIntoView({behavior:'smooth'});
+  };
+  const handleDeleteDish = id => {
+    const ns=JSON.parse(JSON.stringify(state));
+    ns.dishes=ns.dishes.filter(d=>d.id!==id);
+    ns.dishes.forEach(d=>{ d.components=d.components.filter(c=>!(c.type==='dish'&&c.id===id)); });
+    updateState(ns);
+  };
+
+  const renderCurrentProductionOrder = () => {
+    const list=document.getElementById('current-order-items-list');
+    const te=document.getElementById('current-order-total');
+    list.innerHTML=''; let total=0;
+    if(!currentProductionOrder.items.length){ list.innerHTML='<p class="text-gray-500 text-sm text-center italic">Añade platos a este pedido.</p>'; te.innerHTML='Total: 0.00'; return; }
+    currentProductionOrder.items.forEach((item,idx)=>{
+      const d=document.createElement('div'); d.className='flex items-center justify-between p-2 bg-white rounded text-sm border';
+      d.innerHTML=`<div><p class="font-bold">${item.quantity} x ${item.name}</p><p class="text-xs text-gray-600">${fmtCur(item.unitCost)} c/u</p></div>
+        <div class="flex items-center gap-4"><span class="font-semibold">${fmtCur(item.totalCost)}</span>
+          <button type="button" data-index="${idx}" class="btn-delete-from-order text-red-500 font-bold text-lg">&times;</button>
+        </div>`;
+      list.appendChild(d); total+=item.totalCost;
+    });
+    te.innerHTML=`Total: ${fmtCur(total)}`;
+  };
+  const handleAddItemToOrder = () => {
+    const did=document.getElementById('purchase-dish-selector').value;
+    const qty=parseInt(document.getElementById('purchase-dish-quantity').value,10);
+    if(!did||isNaN(qty)||qty<1) return;
+    const dish=state.dishes.find(d=>d.id===did); if(!dish) return;
+    const uc=calculateDishCost(dish);
+    currentProductionOrder.items.push({id:dish.id,name:dish.name,quantity:qty,unitCost:uc,totalCost:uc*qty});
+    renderCurrentProductionOrder();
+    document.getElementById('purchase-dish-selector').value='';
+    document.getElementById('purchase-dish-quantity').value='1';
+  };
+  const handleDeleteFromCurrentOrder = e => {
+    if(!e.target.classList.contains('btn-delete-from-order')) return;
+    const idx=parseInt(e.target.dataset.index,10);
+    if(!isNaN(idx)){ currentProductionOrder.items.splice(idx,1); renderCurrentProductionOrder(); }
+  };
+  const handleSaveOrderToPlan = () => {
+    const date=document.getElementById('order-date').value;
+    const cs=document.getElementById('order-client-selector');
+    const cid=cs.value; const cname=cs.options[cs.selectedIndex].text;
+    if(!currentProductionOrder.items.length||!date) return;
+    const ns=JSON.parse(JSON.stringify(state));
+    const {newId,sequence,dateKey}=generateOrderId(date);
+    ns.customerOrders.push({
+      id:`order-${Date.now()}`,shortId:newId,date,
+      clientId:cid||null,clientName:cid?cname:'Sin Cliente',
+      items:currentProductionOrder.items,
+      totalCost:currentProductionOrder.items.reduce((s,i)=>s+i.totalCost,0)
+    });
+    ns.lastOrderSequence[dateKey]=sequence;
+    updateState(ns);
+    currentProductionOrder={items:[]}; renderCurrentProductionOrder();
+  };
+
+  const handleEditOrder = id => {
+    const order=state.customerOrders.find(o=>o.id===id); if(!order) return;
+    const mb=document.getElementById('modal-body');
+    const mf=document.getElementById('modal-footer');
+    document.getElementById('modal-title').textContent=`Editando Pedido ID: ${order.shortId||'N/A'}`;
+    let co=''; state.clients.filter(c=>c.status==='activo').sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{ co+=`<option value="${c.id}" ${order.clientId===c.id?'selected':''}>${c.name} ${c.lastname}</option>`; });
+    let dso=document.getElementById('purchase-dish-selector').innerHTML;
+    currentProductionOrder=JSON.parse(JSON.stringify({items:Array.isArray(order.items)?order.items:[]}));
+    mb.innerHTML=`<div class="space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div><label class="block text-sm font-medium text-gray-700">Fecha</label><input type="date" id="edit-order-date" value="${order.date}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+        <div><label class="block text-sm font-medium text-gray-700">Cliente</label><select id="edit-order-client" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"><option value="">Ninguno</option>${co}</select></div>
+      </div>
+      <h4 class="text-lg font-semibold text-gray-700 border-t pt-4">Platos en la Orden</h4>
+      <div id="edit-order-items-list" class="space-y-2 max-h-60 overflow-y-auto pr-2 border p-2 rounded bg-gray-50"></div>
+      <div id="edit-order-total" class="text-right font-bold text-xl text-gray-800 pt-2 border-t">Total: ${fmtCur(order.totalCost)}</div>
+      <div class="flex flex-wrap gap-4 items-end pt-4 border-t">
+        <div class="flex-grow min-w-[150px]"><label class="block text-sm font-medium text-gray-700">Plato</label><select id="edit-purchase-dish-selector" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">${dso}</select></div>
+        <div class="w-24"><label class="block text-sm font-medium text-gray-700">Cantidad</label><input type="number" id="edit-purchase-dish-quantity" value="1" min="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+        <button type="button" id="add-item-to-edit-order-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary">Añadir Plato</button>
+      </div></div>`;
+    mf.innerHTML=`<button id="save-edited-order-btn" data-id="${id}" class="py-2 px-6 rounded-lg font-semibold btn-primary">Guardar Edición</button>`;
+    const renderEOI=()=>{
+      const el=document.getElementById('edit-order-items-list');
+      const te=document.getElementById('edit-order-total');
+      el.innerHTML=''; let tot=0;
+      if(!currentProductionOrder.items.length){ el.innerHTML='<p class="text-gray-500 text-sm text-center italic">Sin platos.</p>'; te.innerHTML='Total: 0.00'; return; }
+      currentProductionOrder.items.forEach((it,idx)=>{
+        const d=document.createElement('div'); d.className='flex items-center justify-between p-2 bg-white rounded text-sm border';
+        d.innerHTML=`<div><p class="font-bold">${it.quantity} x ${it.name}</p><p class="text-xs text-gray-600">${fmtCur(it.unitCost)} c/u</p></div>
+          <div class="flex items-center gap-4"><span class="font-semibold">${fmtCur(it.totalCost)}</span>
+            <button type="button" data-index="${idx}" class="btn-del-eo text-red-500 font-bold text-lg">&times;</button>
+          </div>`;
+        el.appendChild(d); tot+=it.totalCost;
+      });
+      te.innerHTML=`Total: ${fmtCur(tot)}`;
+      el.querySelectorAll('.btn-del-eo').forEach(b=>b.addEventListener('click',e=>{
+        const i=parseInt(e.target.dataset.index,10); if(!isNaN(i)){currentProductionOrder.items.splice(i,1);renderEOI();}
+      }));
+    };
+    renderEOI();
+    document.getElementById('add-item-to-edit-order-btn').addEventListener('click',()=>{
+      const did=document.getElementById('edit-purchase-dish-selector').value;
+      const qty=parseInt(document.getElementById('edit-purchase-dish-quantity').value,10);
+      if(!did||isNaN(qty)||qty<1) return;
+      const dish=state.dishes.find(d=>d.id===did); if(!dish) return;
+      const uc=calculateDishCost(dish);
+      currentProductionOrder.items.push({id:dish.id,name:dish.name,quantity:qty,unitCost:uc,totalCost:uc*qty});
+      renderEOI();
+    });
+    document.getElementById('save-edited-order-btn').addEventListener('click',e=>{
+      const sid=e.target.dataset.id;
+      const nd=document.getElementById('edit-order-date').value;
+      const ncs=document.getElementById('edit-order-client');
+      const ncid=ncs.value||null;
+      const ncn=ncid?ncs.options[ncs.selectedIndex].text:'Sin Cliente';
+      if(!nd||!currentProductionOrder.items.length) return;
+      const ns=JSON.parse(JSON.stringify(state));
+      const oi=ns.customerOrders.findIndex(o=>o.id===sid);
+      if(oi>-1){
+        ns.customerOrders[oi]={...ns.customerOrders[oi],date:nd,clientId:ncid,clientName:ncn,
+          items:currentProductionOrder.items,totalCost:currentProductionOrder.items.reduce((s,i)=>s+i.totalCost,0)};
+        updateState(ns);
+        document.getElementById('generic-modal').classList.add('hidden');
+        currentProductionOrder={items:[]};
+      }
+    });
+    document.getElementById('generic-modal').classList.remove('hidden');
+  };
+
+  const handleAddClient = e => {
+    e.preventDefault();
+    const nc={id:`client-${Date.now()}`,name:document.getElementById('client-name').value,
+      lastname:document.getElementById('client-lastname').value,
+      contact:document.getElementById('client-contact').value,
+      whatsapp:document.getElementById('client-whatsapp').value,
+      email:document.getElementById('client-email').value,
+      status:document.getElementById('client-status').value};
+    if(nc.name&&nc.lastname){ const ns=JSON.parse(JSON.stringify(state)); ns.clients.push(nc); updateState(ns); e.target.reset(); }
+  };
+  const handleDeleteClient = id => { const ns=JSON.parse(JSON.stringify(state)); ns.clients=ns.clients.filter(c=>c.id!==id); updateState(ns); };
+  const handleEditClient = id => {
+    const c=state.clients.find(x=>x.id===id); const row=document.getElementById(`client-row-${id}`); if(!c||!row) return;
+    row.innerHTML=`<td class="px-2 py-2"><input type="text" value="${c.name}" data-field="name" class="w-full border rounded px-1 py-1"></td>
+      <td class="px-2 py-2"><input type="text" value="${c.contact}" data-field="contact" class="w-full border rounded px-1 py-1"></td>
+      <td class="px-2 py-2"><input type="email" value="${c.email}" data-field="email" class="w-full border rounded px-1 py-1"></td>
+      <td class="px-2 py-2"><select data-field="status" class="w-full border rounded px-1 py-1">
+        <option value="activo" ${c.status==='activo'?'selected':''}>Activo</option>
+        <option value="inactivo" ${c.status==='inactivo'?'selected':''}>Inactivo</option>
+      </select></td>
+      <td class="px-6 py-4 text-right"><button class="text-green-600 btn-save-client">Guardar</button></td>`;
+    row.querySelector('.btn-save-client').addEventListener('click',()=>{
+      const ns=JSON.parse(JSON.stringify(state)); const i=ns.clients.findIndex(x=>x.id===id);
+      if(i>-1){ ns.clients[i]={...ns.clients[i],
+        name:row.querySelector('[data-field="name"]').value,
+        contact:row.querySelector('[data-field="contact"]').value,
+        email:row.querySelector('[data-field="email"]').value,
+        status:row.querySelector('[data-field="status"]').value}; updateState(ns); }
+    });
+  };
+
+  const handleGenerateByDate = () => {
+    const sd=document.getElementById('start-date-filter').value;
+    const ed=document.getElementById('end-date-filter').value;
+    if(!sd||!ed) return;
+    const filtered=state.customerOrders.filter(o=>o.date>=sd&&o.date<=ed);
+    const sli={};
+    const gbr=(did,mult)=>{
+      const dish=state.dishes.find(d=>d.id===did); if(!dish) return;
+      dish.components.forEach(c=>{
+        if(c.type==='ingredient'){ if(!sli[c.id]) sli[c.id]={quantity:0}; sli[c.id].quantity+=c.quantity*mult; }
+        else if(c.type==='dish') gbr(c.id,c.quantity*mult);
+      });
+    };
+    filtered.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>gbr(it.id,it.quantity)));
+    let total=0;
+    const items=Object.keys(sli).map(ingId=>{
+      const ing=state.ingredients.find(i=>i.id===ingId); if(!ing) return null;
+      const req=sli[ingId].quantity; const inv=ing.inventoryQty||0;
+      const miss=Math.max(0,req-inv); let pu=0,pc=0,fpu=0;
+      const mpq=ing.minPurchaseQty||1;
+      if(miss>0&&ing.consumptionQty>0){ fpu=miss/ing.consumptionQty; if(fpu>0){ pu=Math.ceil(fpu/mpq)*mpq; } pc=pu*ing.purchasePrice; }
+      total+=pc;
+      return {id:ing.id,name:ing.name,typeId:ing.typeId,unit:ing.consumptionUnit,purchaseUnit:ing.purchaseUnit,
+        requiredQuantity:req,inventoryQty:inv,missingQuantity:miss,missingInPurchaseUnits:fpu,
+        purchaseUnitsToBuy:pu,purchaseCost:pc,isPurchased:false};
+    }).filter(Boolean);
+    if(items.length){
+      const ns=JSON.parse(JSON.stringify(state));
+      ns.savedShoppingLists.push({id:`list-${Date.now()}`,createdAt:new Date().toISOString(),
+        range:{start:sd,end:ed},items,totalCost:total,status:'pending'});
+      updateState(ns);
+    }
+  };
+
+  const handleViewShoppingList = id => {
+    const l=state.savedShoppingLists.find(x=>x.id===id); if(!l) return;
+    document.getElementById('modal-title').textContent=`Lista de Compras (${l.range.start} - ${l.range.end})`;
+    const mb=document.getElementById('modal-body'); const mf=document.getElementById('modal-footer');
+    const grouped=l.items.reduce((a,it)=>{ const k=it.typeId||'untyped'; (a[k]=a[k]||[]).push(it); return a; },{});
+    const skeys=Object.keys(grouped).sort((a,b)=>{ if(a==='untyped') return 1; if(b==='untyped') return -1;
+      return (state.ingredientTypes.find(t=>t.id===a)?.name||'').localeCompare(state.ingredientTypes.find(t=>t.id===b)?.name||''); });
+    let h=`<div class="overflow-x-auto"><table class="min-w-full text-sm">
+      <thead class="bg-gray-50"><tr>
+        <th class="px-2 py-2 text-left">Comprado</th><th class="px-2 py-2 text-left">Ingrediente</th>
+        <th class="px-2 py-2 text-right">Requerido</th><th class="px-2 py-2 text-right">A Comprar</th>
+        <th class="px-2 py-2 text-right">Costo</th><th class="px-2 py-2 text-right">Inventario</th>
+        <th class="px-2 py-2 text-right">Faltante</th>
+      </tr></thead><tbody>`;
+    skeys.forEach(tid=>{
+      const gn=(state.ingredientTypes.find(t=>t.id===tid)?.name)||'Sin Tipo';
+      h+=`<tr><td colspan="7" class="px-2 py-2 bg-gray-100 font-bold">${gn}</td></tr>`;
+      grouped[tid].sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>{
+        const mc=it.missingQuantity>0?'text-red-600 font-bold':'';
+        h+=`<tr class="border-b">
+          <td class="px-2 py-2 text-center"><input type="checkbox" data-item-id="${it.id}" class="slc h-5 w-5" ${it.isPurchased?'checked':''} ${l.status==='completed'?'disabled':''}></td>
+          <td class="px-2 py-2 whitespace-nowrap">${it.name}</td>
+          <td class="px-2 py-2 text-right font-mono">${it.requiredQuantity.toFixed(2)} ${it.unit}</td>
+          <td class="px-2 py-2 text-right font-mono">${it.purchaseUnitsToBuy} x ${it.purchaseUnit}</td>
+          <td class="px-2 py-2 text-right font-mono">${fmtCur(it.purchaseCost)}</td>
+          <td class="px-2 py-2 text-right font-mono">${it.inventoryQty.toFixed(2)} ${it.unit}</td>
+          <td class="px-2 py-2 text-right font-mono ${mc}">${it.missingQuantity.toFixed(2)} ${it.unit}</td>
+        </tr>`;
+      });
+    });
+    h+=`</tbody></table></div><p class="text-right font-bold text-lg mt-4">Total: ${fmtCur(l.totalCost)}</p>`;
+    mb.innerHTML=h;
+    mf.innerHTML=`<div class="flex justify-end gap-4"><button id="upd-inv-btn" class="py-2 px-4 rounded-lg font-semibold btn-primary" ${l.status==='completed'?'disabled':''}>${l.status==='completed'?'Inventario Actualizado':'Actualizar Inventario'}</button></div>`;
+    document.getElementById('generic-modal').classList.remove('hidden');
+    mb.querySelectorAll('.slc').forEach(cb=>cb.addEventListener('change',e=>{
+      const ns=JSON.parse(JSON.stringify(state));
+      const ll=ns.savedShoppingLists.find(x=>x.id===id);
+      if(ll){ const it=ll.items.find(x=>x.id===e.target.dataset.itemId); if(it) it.isPurchased=e.target.checked; updateState(ns,false); }
+    }));
+    mf.querySelector('#upd-inv-btn').addEventListener('click',()=>{
+      const ns=JSON.parse(JSON.stringify(state));
+      const li=ns.savedShoppingLists.findIndex(x=>x.id===id); if(li===-1) return;
+      ns.savedShoppingLists[li].items.forEach(it=>{
+        if(it.isPurchased){ const ii=ns.ingredients.findIndex(x=>x.id===it.id);
+          if(ii>-1) ns.ingredients[ii].inventoryQty+=it.purchaseUnitsToBuy*ns.ingredients[ii].consumptionQty; }
+      });
+      ns.savedShoppingLists[li].status='completed'; updateState(ns);
+      document.getElementById('generic-modal').classList.add('hidden');
+    });
+  };
+
+  const handleExportShoppingListPDF = id => {
+    const l=state.savedShoppingLists.find(x=>x.id===id); if(!l) return;
+    const doc=new jsPDF('landscape');
+    let ly = addPDFHeader(doc, 'Lista de Compras', `Periodo: ${l.range.start} a ${l.range.end} | Generada: ${new Date(l.createdAt).toLocaleString('es-ES')}`);
+    const grouped=l.items.reduce((a,it)=>{ const k=it.typeId||'untyped'; (a[k]=a[k]||[]).push(it); return a; },{});
+    let ly=45;
+    const cols=["Ingrediente","Requerido","A Comprar","Costo","Inventario","Faltante","Faltante (Compra)"];
+    Object.keys(grouped).sort((a,b)=>{ if(a==='untyped') return 1; if(b==='untyped') return -1;
+      return (state.ingredientTypes.find(t=>t.id===a)?.name||'').localeCompare(state.ingredientTypes.find(t=>t.id===b)?.name||'');
+    }).forEach(tid=>{
+      const gn=(state.ingredientTypes.find(t=>t.id===tid)?.name)||'Sin Tipo';
+      doc.setFontSize(12); doc.text(gn,14,ly); ly+=7;
+      doc.autoTable({ head:[cols], startY:ly, theme:'grid', headStyles:{fillColor:[249,115,22]},
+        styles:{fontSize:8},
+        body:grouped[tid].sort((a,b)=>a.name.localeCompare(b.name)).map(it=>[
+          it.name,`${it.requiredQuantity.toFixed(2)} ${it.unit}`,`${it.purchaseUnitsToBuy} x ${it.purchaseUnit}`,
+          fmtCur(it.purchaseCost),`${it.inventoryQty.toFixed(2)} ${it.unit}`,`${it.missingQuantity.toFixed(2)} ${it.unit}`,
+          it.missingInPurchaseUnits.toFixed(2)]) });
+      ly=doc.autoTable.previous.finalY+10;
+    });
+    doc.setFontSize(14); doc.text(`Total: ${fmtCur(l.totalCost)}`,14,ly);
+    doc.save(`lista_compras_${l.range.start}_${l.range.end}.pdf`);
+  };
+
+  const dlCSV = (content,filename) => {
+    const blob=new Blob(['\uFEFF',content],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob); const a=document.createElement('a');
+    a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  const handleExportShoppingListCSV = id => {
+    const l=state.savedShoppingLists.find(x=>x.id===id); if(!l) return;
+    const hdr=["Comprado","Tipo Ingrediente","Ingrediente","Requerido (Ud. Consumo)","Unidad Consumo","A Comprar (Ud. Compra)","Costo Estimado","Inventario Actual","Faltante (Ud. Consumo)","Faltante (Ud. Compra)"].join(';');
+    const rows=l.items.map(it=>[
+      it.isPurchased?'SI':'NO',(state.ingredientTypes.find(t=>t.id===it.typeId)?.name||'Sin Tipo'),
+      it.name.replace(/,/g,''),it.requiredQuantity.toFixed(2).replace('.',','),it.unit,
+      `${it.purchaseUnitsToBuy} x ${it.purchaseUnit}`.replace(/;/g,' '),
+      it.purchaseCost.toFixed(2).replace('.',','),it.inventoryQty.toFixed(2).replace('.',','),
+      it.missingQuantity.toFixed(2).replace('.',','),it.missingInPurchaseUnits.toFixed(2).replace('.',',')].join(';')).join('\n');
+    dlCSV(`${hdr}\n${rows}\n\n;;;;;TOTAL;${l.totalCost.toFixed(2).replace('.',',')};;;`,`lista_compras_${l.range.start}_${l.range.end}.csv`);
+  };
+
+  const handleSaveProductionPlan = () => {
+    const sd=document.getElementById('production-start-date').value;
+    const ed=document.getElementById('production-end-date').value;
+    if(!sd||!ed) return;
+    const orders=state.customerOrders.filter(o=>o.date>=sd&&o.date<=ed);
+    if(!orders.length) return;
+    const dishes=[]; const totalIngs={};
+    const gbi=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); if(!d) return;
+      d.components.forEach(c=>{ if(c.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===c.id);
+        if(ing){ if(!totalIngs[c.id]) totalIngs[c.id]={quantity:0,name:ing.name,unit:ing.consumptionUnit,typeId:ing.typeId};
+          totalIngs[c.id].quantity+=c.quantity*mult; }
+      } else if(c.type==='dish') gbi(c.id,c.quantity*mult); }); };
+    orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
+      dishes.push({orderId:o.id,orderShortId:o.shortId,id:it.id,name:it.name,quantity:it.quantity,
+        date:o.date,clientId:o.clientId,clientName:o.clientName,unitCost:it.unitCost,totalCost:it.totalCost});
+      gbi(it.id,it.quantity);
+    }));
+    const ns=JSON.parse(JSON.stringify(state));
+    ns.savedProductionPlans.push({id:`plan-${Date.now()}`,createdAt:new Date().toISOString(),
+      date:{start:sd,end:ed},dishes,ingredients:Object.values(totalIngs),isExecuted:false});
+    updateState(ns);
+  };
+
+  const handleViewProductionPlan = id => {
+    const plan=state.savedProductionPlans.find(p=>p.id===id); if(!plan) return;
+    document.getElementById('modal-title').textContent=`Plan de Producción (${plan.date.start} - ${plan.date.end})`;
+    const pd=Array.isArray(plan.dishes)?plan.dishes:[];
+    const gbi=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); const ings={};
+      if(!d) return ings;
+      const dive=(cd,m)=>cd.components.forEach(c=>{ if(c.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===c.id);
+        if(ing){ if(!ings[c.id]) ings[c.id]={quantity:0,name:ing.name,unit:ing.consumptionUnit}; ings[c.id].quantity+=c.quantity*m; }
+      } else { const sub=state.dishes.find(x=>x.id===c.id); if(sub) dive(sub,c.quantity*m); } });
+      dive(d,mult); return ings; };
+    const gbd=pd.reduce((a,it)=>{ if(!a[it.date]) a[it.date]={}; if(!a[it.date][it.orderId]) a[it.date][it.orderId]={clientName:it.clientName,items:[],totalCost:0,shortId:it.orderShortId||'N/A'};
+      a[it.date][it.orderId].items.push(it); a[it.date][it.orderId].totalCost+=it.totalCost; return a; },{});
+    let html='';
+    Object.keys(gbd).sort().forEach(date=>{
+      const dob=gbd[date]; const dti={};
+      Object.values(dob).forEach(og=>og.items.forEach(it=>{
+        const di=gbi(it.id,it.quantity); Object.keys(di).forEach(k=>{ if(!dti[k]) dti[k]={...di[k]}; else dti[k].quantity+=di[k].quantity; });
+      }));
+      html+=`<div class="mb-6 p-4 border rounded-lg"><h4 class="font-bold mb-2 text-lg">${fmtDate(date)}</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h5 class="font-semibold mb-2 text-sm">Ingredientes del Día</h5>
+          <table class="w-full text-sm"><tbody>`;
+      Object.values(dti).sort((a,b)=>a.name.localeCompare(b.name)).forEach(i=>{ html+=`<tr><td class="py-1 border-b">${i.name}</td><td class="py-1 border-b text-right font-mono">${i.quantity.toFixed(2)} ${i.unit}</td></tr>`; });
+      html+=`</tbody></table></div><div><h5 class="font-semibold mb-2 text-sm">Órdenes</h5><div class="space-y-2">`;
+      Object.keys(dob).forEach(oid=>{ const og=dob[oid];
+        let ihtml=''; let ingH='';
+        og.items.forEach(it=>{ ihtml+=`<p class="text-xs ml-4">- ${it.quantity} x ${it.name} (${fmtCur(it.totalCost)})</p>`;
+          const di=gbi(it.id,it.quantity);
+          const il=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<div class="flex justify-between border-b border-gray-100 py-0.5 text-xs"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></div>`).join('');
+          if(il) ingH+=`<div class="mb-2"><h6 class="font-bold text-xs bg-gray-100 p-1 rounded">Para ${it.quantity} x ${it.name}:</h6><div class="pl-2">${il}</div></div>`;
+        });
+        html+=`<div class="p-2 bg-gray-100 rounded text-sm border-2 border-gray-200">
+          <div class="flex justify-between items-center font-bold border-b pb-0.5 mb-0.5"><span>Orden ID ${og.shortId}</span><span class="text-green-700">${fmtCur(og.totalCost)}</span></div>
+          <p class="text-xs text-gray-700 mb-1">${og.clientName}</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            <div><h5 class="font-semibold text-xs mb-1">Platos:</h5>${ihtml}</div>
+            <div><h5 class="font-semibold text-xs mb-1">Ingredientes por Plato:</h5>${ingH}</div>
+          </div></div>`;
+      });
+      html+=`</div></div></div></div>`;
+    });
+    document.getElementById('modal-footer').innerHTML='';
+    document.getElementById('modal-body').innerHTML=html;
+    document.getElementById('generic-modal').classList.remove('hidden');
+  };
+
+  const handleExportProductionPDF = id => {
+    const plan=state.savedProductionPlans.find(p=>p.id===id); if(!plan) return;
+    const doc=new jsPDF(); const pd=Array.isArray(plan.dishes)?plan.dishes:[];
+    let ly = addPDFHeader(doc, 'Plan de Producción', `Fechas: ${plan.date.start} al ${plan.date.end}`);
+    const gbi=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); const ings={};
+      if(!d) return ings;
+      const dive=(cd,m)=>cd.components.forEach(c=>{ if(c.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===c.id);
+        if(ing){ if(!ings[c.id]) ings[c.id]={quantity:0,name:ing.name,unit:ing.consumptionUnit}; ings[c.id].quantity+=c.quantity*m; }
+      } else { const sub=state.dishes.find(x=>x.id===c.id); if(sub) dive(sub,c.quantity*m); } });
+      dive(d,mult); return ings; };
+    const gbd=pd.reduce((a,it)=>{ if(!a[it.date]) a[it.date]={}; if(!a[it.date][it.orderId]) a[it.date][it.orderId]={clientName:it.clientName,items:[],totalCost:0,shortId:it.orderShortId||'N/A'};
+      a[it.date][it.orderId].items.push(it); a[it.date][it.orderId].totalCost+=it.totalCost; return a; },{});
+    let ly=40;
+    Object.keys(gbd).sort().forEach(date=>{
+      if(ly>250){doc.addPage();ly=20;}
+      doc.setFontSize(14); doc.text(`Producción: ${fmtDate(date)}`,14,ly); ly+=5;
+      const dob=gbd[date]; const dti={};
+      Object.values(dob).forEach(og=>og.items.forEach(it=>{ const di=gbi(it.id,it.quantity);
+        Object.keys(di).forEach(k=>{ if(!dti[k]) dti[k]={...di[k]}; else dti[k].quantity+=di[k].quantity; }); }));
+      doc.setFontSize(10); doc.text('Ingredientes Totales del Día:',14,ly+5); ly+=6;
+      doc.autoTable({startY:ly,head:[['Ingrediente','Cantidad','Unidad']],
+        body:Object.values(dti).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>[i.name,i.quantity.toFixed(2),i.unit]),
+        theme:'grid',headStyles:{fillColor:[249,115,22],fontSize:8},styles:{fontSize:7}});
+      ly=doc.autoTable.previous.finalY+8;
+      Object.keys(dob).forEach(oid=>{ const og=dob[oid];
+        if(ly>250){doc.addPage();ly=20;}
+        doc.setFontSize(10); doc.text(`Orden ${og.shortId} | ${og.clientName} | ${fmtCur(og.totalCost)}`,14,ly+5); ly+=8;
+        doc.autoTable({startY:ly,head:[['Cant.','Plato','Costo']],
+          body:og.items.map(it=>[it.quantity,it.name,fmtCur(it.totalCost)]),
+          theme:'grid',headStyles:{fillColor:[107,114,128],fontSize:7},styles:{fontSize:7},tableWidth:90,margin:{left:14},
+          columnStyles:{0:{cellWidth:10,halign:'right'},2:{cellWidth:20,halign:'right'}}});
+        ly=doc.autoTable.previous.finalY+8;
+      });
+      ly+=8;
+    });
+    doc.save(`plan_produccion_${plan.date.start}_${plan.date.end}.pdf`);
+  };
+
+  const handleExportProductionCSV = id => {
+    const plan=state.savedProductionPlans.find(p=>p.id===id); if(!plan) return;
+    const pd=Array.isArray(plan.dishes)?plan.dishes:[];
+    const hdr=["Dia Produccion","Orden ID","Cliente","Plato","Cantidad","Costo Unitario","Costo Total Plato","Costo Total Orden"].join(';');
+    const gbo=pd.reduce((a,it)=>{ if(!a[it.orderId]) a[it.orderId]=0; a[it.orderId]+=it.totalCost; return a; },{});
+    const rows=pd.map(it=>[it.date,it.orderShortId||'N/A',it.clientName.replace(/;/g,''),it.name.replace(/;/g,''),it.quantity,
+      it.unitCost.toFixed(2).replace('.',','),it.totalCost.toFixed(2).replace('.',','),(gbo[it.orderId]||0).toFixed(2).replace('.',',')].join(';')).join('\n');
+    dlCSV(`${hdr}\n${rows}`,`plan_produccion_platos_${plan.date.start}_${plan.date.end}.csv`);
+  };
+
+  const handleExportProductionIngredientsCSV = id => {
+    const plan=state.savedProductionPlans.find(p=>p.id===id); if(!plan||!plan.ingredients) return;
+    const hdr=["Ingrediente","Tipo Ingrediente","Cantidad Total Requerida","Unidad Consumo"].join(';');
+    const rows=plan.ingredients.map(ing=>[(ing.name||'').replace(/;/g,''),
+      (state.ingredientTypes.find(t=>t.id===ing.typeId)?.name)||'Sin Tipo',
+      ing.quantity.toFixed(2).replace('.',','),ing.unit].join(';')).join('\n');
+    dlCSV(`${hdr}\n${rows}`,`plan_produccion_ingredientes_${plan.date.start}_${plan.date.end}.csv`);
+  };
+
+  const handleExportConsolidatedProductionCSV = id => {
+    const plan=state.savedProductionPlans.find(p=>p.id===id); if(!plan) return;
+    const pd=Array.isArray(plan.dishes)?plan.dishes:[];
+    const gbid=(did,mult,date)=>{ const d=state.dishes.find(x=>x.id===did); const ings={};
+      if(!d) return ings;
+      const dive=(cd,m)=>cd.components.forEach(c=>{ if(c.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===c.id);
+        if(ing){ const k=`${ing.id}-${date}`; if(!ings[k]) ings[k]={id:ing.id,name:ing.name,typeId:ing.typeId,unit:ing.consumptionUnit,date,quantity:0};
+          ings[k].quantity+=c.quantity*m; }
+      } else { const sub=state.dishes.find(x=>x.id===c.id); if(sub) dive(sub,c.quantity*m); } });
+      dive(d,mult); return ings; };
+    const gbdf=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); const ings={};
+      if(!d) return [];
+      const dive=(cd,m)=>cd.components.forEach(c=>{ if(c.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===c.id);
+        if(ing){ if(!ings[c.id]) ings[c.id]={id:ing.id,name:ing.name,typeId:ing.typeId,unit:ing.consumptionUnit,quantity:0}; ings[c.id].quantity+=c.quantity*m; }
+      } else { const sub=state.dishes.find(x=>x.id===c.id); if(sub) dive(sub,c.quantity*m); } });
+      dive(d,mult); return Object.values(ings).sort((a,b)=>a.name.localeCompare(b.name)); };
+    const dim={};
+    pd.forEach(it=>{ const di=gbid(it.id,it.quantity,it.date); Object.values(di).forEach(i=>{ const k=`${i.id}-${i.date}`; if(!dim[k]) dim[k]=i; else dim[k].quantity+=i.quantity; }); });
+    const dil=Object.values(dim).sort((a,b)=>{ const dc=a.date.localeCompare(b.date); return dc!==0?dc:a.name.localeCompare(b.name); });
+    const s1h="SECCION: INGREDIENTES CONSOLIDADO POR DÍA;;;;;\n"+["Día Producción","Ingrediente","Tipo Ingrediente","Cantidad Total Requerida","Unidad Consumo"].join(';');
+    const s1r=dil.map(i=>[i.date,i.name.replace(/;/g,''),(state.ingredientTypes.find(t=>t.id===i.typeId)?.name)||'Sin Tipo',i.quantity.toFixed(2).replace('.',','),i.unit].join(';')).join('\n');
+    const gbo2=pd.reduce((a,it)=>{ if(!a[it.orderId]) a[it.orderId]=0; a[it.orderId]+=it.totalCost; return a; },{});
+    const s2h="\n\nSECCION: DETALLE DE PLATOS POR ORDEN Y COSTOS;;;;;;;;\n"+["Dia Produccion","Orden ID","Cliente","Plato","Cantidad","Costo Unitario","Costo Total Plato","Costo Total Orden"].join(';');
+    const s2r=pd.map(it=>[it.date,it.orderShortId||'N/A',it.clientName.replace(/;/g,''),it.name.replace(/;/g,''),it.quantity,
+      it.unitCost.toFixed(2).replace('.',','),(it.totalCost||0).toFixed(2).replace('.',','),(gbo2[it.orderId]||0).toFixed(2).replace('.',',')].join(';')).join('\n');
+    const s3h="\n\nSECCION: DESGLOSE DE INGREDIENTES POR PLATO Y ORDEN;;;;;;;\n"+["Dia Produccion","Orden ID","Plato Requerido","Cant. Plato","Ingrediente","Tipo Ingrediente","Cantidad Requerida","Unidad Consumo"].join(';');
+    let s3r=[];
+    pd.forEach(it=>{ const ifs=gbdf(it.id,it.quantity);
+      ifs.forEach(i=>s3r.push([it.date,it.orderShortId||'N/A',it.name.replace(/;/g,''),it.quantity,i.name.replace(/;/g,''),(state.ingredientTypes.find(t=>t.id===i.typeId)?.name)||'Sin Tipo',i.quantity.toFixed(2).replace('.',','),i.unit].join(';'))); });
+    dlCSV(`${s1h}\n${s1r}${s2h}\n${s2r}${s3h}\n${s3r.join('\n')}`,`plan_consolidado_${plan.date.start}_${plan.date.end}.csv`);
+  };
+
+  const handleAddInventoryPurchase = id => {
+    const qi=document.getElementById(`inv-qty-${id}`);
+    const us=document.getElementById(`inv-unit-${id}`);
+    const qty=parseFloat(qi.value); if(isNaN(qty)||qty<=0){qi.value='';return;}
+    const ns=JSON.parse(JSON.stringify(state));
+    const i=ns.ingredients.findIndex(x=>x.id===id);
+    if(i>-1){ const ing=ns.ingredients[i];
+      ing.inventoryQty+=us.value==='purchase'?qty*ing.consumptionQty:qty;
+      updateState(ns); qi.value=''; }
+  };
+  const handleAdjustInventoryStock = id => {
+    const qi=document.getElementById(`inv-qty-${id}`);
+    const us=document.getElementById(`inv-unit-${id}`);
+    const qty=parseFloat(qi.value); if(isNaN(qty)||qty<0){qi.value='';return;}
+    const ns=JSON.parse(JSON.stringify(state));
+    const i=ns.ingredients.findIndex(x=>x.id===id);
+    if(i>-1){ const ing=ns.ingredients[i];
+      ing.inventoryQty=us.value==='purchase'?qty*ing.consumptionQty:qty;
+      updateState(ns); qi.value=''; }
+  };
+  const handleExecuteDailyProduction = date => {
+    if(state.executedProductions.includes(date)) return;
+    const orders=state.customerOrders.filter(o=>o.date===date); if(!orders.length) return;
+    const itd={};
+    const gbr=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); if(!d) return;
+      d.components.forEach(c=>{ if(c.type==='ingredient'){if(!itd[c.id])itd[c.id]=0;itd[c.id]+=c.quantity*mult;}
+        else if(c.type==='dish') gbr(c.id,c.quantity*mult); }); };
+    orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>gbr(it.id,it.quantity)));
+    const ns=JSON.parse(JSON.stringify(state));
+    Object.keys(itd).forEach(k=>{ const i=ns.ingredients.findIndex(x=>x.id===k); if(i>-1) ns.ingredients[i].inventoryQty-=itd[k]; });
+    ns.executedProductions.push(date); updateState(ns);
+  };
+  const handleExecuteProductionPlan = id => {
+    const pi=state.savedProductionPlans.findIndex(p=>p.id===id); if(pi===-1) return;
+    const plan=state.savedProductionPlans[pi]; if(plan.isExecuted) return;
+    const itd={};
+    const gbr=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); if(!d) return;
+      d.components.forEach(c=>{ if(c.type==='ingredient'){if(!itd[c.id])itd[c.id]=0;itd[c.id]+=c.quantity*mult;}
+        else if(c.type==='dish') gbr(c.id,c.quantity*mult); }); };
+    (Array.isArray(plan.dishes)?plan.dishes:[]).forEach(it=>gbr(it.id,it.quantity));
+    const ns=JSON.parse(JSON.stringify(state));
+    Object.keys(itd).forEach(k=>{ const i=ns.ingredients.findIndex(x=>x.id===k); if(i>-1) ns.ingredients[i].inventoryQty-=itd[k]; });
+    ns.savedProductionPlans[pi].isExecuted=true; updateState(ns);
+  };
+
+  // ── EXPORT / IMPORT (JSON) ──
+  const exportData = () => {
+    const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+    const u=URL.createObjectURL(b); const a=document.createElement('a');
+    a.href=u; a.download=`datos_mealgo_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+  };
+  const importData = e => {
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const d=JSON.parse(ev.target.result);
+        if(d.ingredients&&d.dishes){
+          const ns={ingredients:d.ingredients||[],ingredientTypes:d.ingredientTypes||[],dishes:d.dishes||[],
+            clients:d.clients||[],customerOrders:d.customerOrders||d.dishesToProduce||[],
+            savedShoppingLists:d.savedShoppingLists||[],savedProductionPlans:d.savedProductionPlans||[],
+            executedProductions:d.executedProductions||[],lastOrderSequence:d.lastOrderSequence||{}};
+          ns.customerOrders.forEach(o=>{ if(!o.shortId&&o.date){ const {newId}=generateOrderId(o.date,true); o.shortId=newId; } });
+          updateState(ns);
+        }
+      } catch(err){ console.error('Error al importar:',err); }
+    };
+    reader.readAsText(file); e.target.value=null;
+  };
+
+  // ══════════════════════════════════
+  //   INIT
+  // ══════════════════════════════════
+  // Parchamos la apertura del modal genérico para incluir el logo en el título
+  const openModal = (title, bodyHtml, footerHtml = '') => {
+    const mt = document.getElementById('modal-title');
+    mt.innerHTML = `${MODAL_LOGO_HTML}<span>${title}</span>`;
+    document.getElementById('modal-body').innerHTML = bodyHtml;
+    document.getElementById('modal-footer').innerHTML = footerHtml;
+    document.getElementById('generic-modal').classList.remove('hidden');
+  };
+
+  const init = async () => {
+    document.getElementById('sync-overlay').style.display='flex';
+    await Promise.all([loadState(), loadLogoForPDF()]);
+    document.getElementById('sync-overlay').style.display='none';
+    setupEventListeners();
+    const today=new Date().toISOString().slice(0,10);
+    document.getElementById('order-date').value=today;
+    document.getElementById('start-date-filter').value=today;
+    document.getElementById('end-date-filter').value=today;
+    document.getElementById('production-start-date').value=today;
+    document.getElementById('production-end-date').value=today;
+    populateMonthFilter();
+    navigateTo('dashboard');
+  };
+
+  await init();
+}
+</script>
+</body>
+</html>
