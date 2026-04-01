@@ -30,10 +30,23 @@
         measurementId:     "G-XXEK7S54TR"
       };
 
+      // Helper de log visible en pantalla
+      function log(msg) {
+        console.log(msg);
+        const el = document.getElementById('sync-log');
+        const p = document.getElementById('sync-msg');
+        if (el) { el.innerHTML += `<div>${msg}</div>`; el.scrollTop = el.scrollHeight; }
+        if (p) p.textContent = msg;
+      }
+
       try {
+        log('⚙️ Inicializando Firebase…');
         const app = initializeApp(firebaseConfig);
+        log('✅ initializeApp OK');
         getAnalytics(app);
+        log('✅ Analytics OK');
         const db = getDatabase(app);
+        log('✅ getDatabase OK');
 
         window._fbSave = async (data) => {
           try { await set(ref(db, 'mealgo/state'), data); return true; }
@@ -41,16 +54,22 @@
         };
 
         window._fbLoad = async () => {
-          try { const snap = await get(ref(db, 'mealgo/state')); return snap.exists() ? snap.val() : null; }
-          catch(e) { console.error("Firebase load error:", e); return null; }
+          try {
+            log('📡 Intentando leer datos…');
+            const snap = await get(ref(db, 'mealgo/state'));
+            log('✅ Lectura exitosa');
+            return snap.exists() ? snap.val() : null;
+          }
+          catch(e) { log('❌ Error lectura: ' + e.message); console.error("Firebase load error:", e); return null; }
         };
 
         window._firebaseReady = true;
+        log('🚀 Firebase listo — disparando evento');
       } catch(e) {
+        log('❌ Error init Firebase: ' + e.message);
         console.error("Firebase init error:", e);
         window._firebaseReady = false;
       } finally {
-        // Siempre disparar el evento para que la app inicie
         document.dispatchEvent(new Event('firebase-ready'));
       }
     </script>
@@ -114,7 +133,11 @@
 <!-- Loading overlay -->
 <div id="sync-overlay">
   <div class="spinner"></div>
-  <p>Conectando con Firebase…</p>
+  <p id="sync-msg">Iniciando…</p>
+  <div id="sync-log" style="max-width:480px;background:rgba(0,0,0,0.5);border-radius:8px;padding:1rem;font-size:0.75rem;color:#ccc;font-family:monospace;text-align:left;max-height:200px;overflow-y:auto;"></div>
+  <button id="skip-firebase-btn" style="display:none;margin-top:1rem;padding:0.5rem 1.5rem;background:#f97316;color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">
+    Continuar sin Firebase →
+  </button>
 </div>
 
 <div class="min-h-screen container mx-auto px-4 pb-8">
@@ -492,6 +515,19 @@
 // ─── Iniciamos la app cuando Firebase dispare su evento ───
 document.addEventListener('firebase-ready', startApp, { once: true });
 
+// Botón de emergencia: si en 8 segundos no arranca, mostrar opción de continuar sin Firebase
+setTimeout(() => {
+  const overlay = document.getElementById('sync-overlay');
+  const btn = document.getElementById('skip-firebase-btn');
+  if (overlay && overlay.style.display !== 'none' && btn) {
+    btn.style.display = 'block';
+    btn.addEventListener('click', () => {
+      window._fbSave = async () => false;
+      window._fbLoad = async () => null;
+      startApp();
+    }, { once: true });
+  }
+}, 8000);
 async function startApp() {
   const { jsPDF } = window.jspdf;
 
@@ -1562,7 +1598,7 @@ async function startApp() {
   const handleExportShoppingListPDF = id => {
     const l=state.savedShoppingLists.find(x=>x.id===id); if(!l) return;
     const doc=new jsPDF('landscape');
-    let ly = addPDFHeader(doc, 'Lista de Compras', `Periodo: ${l.range.start} a ${l.range.end} | Generada: ${new Date(l.createdAt).toLocaleString('es-ES')}`);
+    let lyS = addPDFHeader(doc, 'Lista de Compras', `Periodo: ${l.range.start} a ${l.range.end} | Generada: ${new Date(l.createdAt).toLocaleString('es-ES')}`);
     const grouped=l.items.reduce((a,it)=>{ const k=it.typeId||'untyped'; (a[k]=a[k]||[]).push(it); return a; },{});
     let ly=45;
     const cols=["Ingrediente","Requerido","A Comprar","Costo","Inventario","Faltante","Faltante (Compra)"];
@@ -1570,16 +1606,16 @@ async function startApp() {
       return (state.ingredientTypes.find(t=>t.id===a)?.name||'').localeCompare(state.ingredientTypes.find(t=>t.id===b)?.name||'');
     }).forEach(tid=>{
       const gn=(state.ingredientTypes.find(t=>t.id===tid)?.name)||'Sin Tipo';
-      doc.setFontSize(12); doc.text(gn,14,ly); ly+=7;
-      doc.autoTable({ head:[cols], startY:ly, theme:'grid', headStyles:{fillColor:[249,115,22]},
+      doc.setFontSize(12); doc.text(gn,14,lyS); lyS+=7;
+      doc.autoTable({ head:[cols], startY:lyS, theme:'grid', headStyles:{fillColor:[249,115,22]},
         styles:{fontSize:8},
         body:grouped[tid].sort((a,b)=>a.name.localeCompare(b.name)).map(it=>[
           it.name,`${it.requiredQuantity.toFixed(2)} ${it.unit}`,`${it.purchaseUnitsToBuy} x ${it.purchaseUnit}`,
           fmtCur(it.purchaseCost),`${it.inventoryQty.toFixed(2)} ${it.unit}`,`${it.missingQuantity.toFixed(2)} ${it.unit}`,
           it.missingInPurchaseUnits.toFixed(2)]) });
-      ly=doc.autoTable.previous.finalY+10;
+      lyS=doc.autoTable.previous.finalY+10;
     });
-    doc.setFontSize(14); doc.text(`Total: ${fmtCur(l.totalCost)}`,14,ly);
+    doc.setFontSize(14); doc.text(`Total: ${fmtCur(l.totalCost)}`,14,lyS);
     doc.save(`lista_compras_${l.range.start}_${l.range.end}.pdf`);
   };
 
@@ -1673,7 +1709,7 @@ async function startApp() {
   const handleExportProductionPDF = id => {
     const plan=state.savedProductionPlans.find(p=>p.id===id); if(!plan) return;
     const doc=new jsPDF(); const pd=Array.isArray(plan.dishes)?plan.dishes:[];
-    let ly = addPDFHeader(doc, 'Plan de Producción', `Fechas: ${plan.date.start} al ${plan.date.end}`);
+    let lyP = addPDFHeader(doc, 'Plan de Producción', `Fechas: ${plan.date.start} al ${plan.date.end}`);
     const gbi=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); const ings={};
       if(!d) return ings;
       const dive=(cd,m)=>cd.components.forEach(c=>{ if(c.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===c.id);
@@ -1684,26 +1720,26 @@ async function startApp() {
       a[it.date][it.orderId].items.push(it); a[it.date][it.orderId].totalCost+=it.totalCost; return a; },{});
     let ly=40;
     Object.keys(gbd).sort().forEach(date=>{
-      if(ly>250){doc.addPage();ly=20;}
-      doc.setFontSize(14); doc.text(`Producción: ${fmtDate(date)}`,14,ly); ly+=5;
+      if(lyP>250){doc.addPage();lyP=20;}
+      doc.setFontSize(14); doc.text(`Producción: ${fmtDate(date)}`,14,lyP); lyP+=5;
       const dob=gbd[date]; const dti={};
       Object.values(dob).forEach(og=>og.items.forEach(it=>{ const di=gbi(it.id,it.quantity);
         Object.keys(di).forEach(k=>{ if(!dti[k]) dti[k]={...di[k]}; else dti[k].quantity+=di[k].quantity; }); }));
-      doc.setFontSize(10); doc.text('Ingredientes Totales del Día:',14,ly+5); ly+=6;
-      doc.autoTable({startY:ly,head:[['Ingrediente','Cantidad','Unidad']],
+      doc.setFontSize(10); doc.text('Ingredientes Totales del Día:',14,lyP+5); lyP+=6;
+      doc.autoTable({startY:lyP,head:[['Ingrediente','Cantidad','Unidad']],
         body:Object.values(dti).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>[i.name,i.quantity.toFixed(2),i.unit]),
         theme:'grid',headStyles:{fillColor:[249,115,22],fontSize:8},styles:{fontSize:7}});
-      ly=doc.autoTable.previous.finalY+8;
+      lyP=doc.autoTable.previous.finalY+8;
       Object.keys(dob).forEach(oid=>{ const og=dob[oid];
-        if(ly>250){doc.addPage();ly=20;}
-        doc.setFontSize(10); doc.text(`Orden ${og.shortId} | ${og.clientName} | ${fmtCur(og.totalCost)}`,14,ly+5); ly+=8;
-        doc.autoTable({startY:ly,head:[['Cant.','Plato','Costo']],
+        if(lyP>250){doc.addPage();lyP=20;}
+        doc.setFontSize(10); doc.text(`Orden ${og.shortId} | ${og.clientName} | ${fmtCur(og.totalCost)}`,14,lyP+5); lyP+=8;
+        doc.autoTable({startY:lyP,head:[['Cant.','Plato','Costo']],
           body:og.items.map(it=>[it.quantity,it.name,fmtCur(it.totalCost)]),
           theme:'grid',headStyles:{fillColor:[107,114,128],fontSize:7},styles:{fontSize:7},tableWidth:90,margin:{left:14},
           columnStyles:{0:{cellWidth:10,halign:'right'},2:{cellWidth:20,halign:'right'}}});
-        ly=doc.autoTable.previous.finalY+8;
+        lyP=doc.autoTable.previous.finalY+8;
       });
-      ly+=8;
+      lyP+=8;
     });
     doc.save(`plan_produccion_${plan.date.start}_${plan.date.end}.pdf`);
   };
