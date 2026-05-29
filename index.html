@@ -127,6 +127,34 @@
                            margin-left:6px; background:#f97316; border-radius:50%;
                            animation: pulse 1s ease-in-out infinite; }
       @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
+
+      /* ── Checklist de ingredientes en producción ── */
+      .prod-check { accent-color:#f97316; cursor:pointer; }
+      .prod-check:checked + .prod-line { text-decoration:line-through; color:#9ca3af; }
+
+      /* ── Calculadora flotante ── */
+      #float-calc { position:fixed; top:120px; right:24px; width:210px; z-index:60;
+                    background:#ffffff; border:1px solid #e5e7eb; border-radius:0.75rem;
+                    box-shadow:0 10px 25px -5px rgba(0,0,0,0.25); user-select:none;
+                    font-family:'Inter',sans-serif; overflow:hidden; }
+      #float-calc .calc-header { background:#f97316; color:#fff; padding:0.4rem 0.6rem;
+                    display:flex; align-items:center; justify-content:space-between;
+                    cursor:move; font-size:0.8rem; font-weight:600; }
+      #float-calc .calc-close { cursor:pointer; font-weight:700; font-size:1.1rem; line-height:1;
+                    background:transparent; border:none; color:#fff; }
+      #float-calc .calc-display { background:#1f2937; color:#fff; text-align:right;
+                    font-family:monospace; font-size:1.25rem; padding:0.5rem 0.6rem;
+                    min-height:2.4rem; word-break:break-all; }
+      #float-calc .calc-pad { display:grid; grid-template-columns:repeat(4,1fr);
+                    gap:1px; background:#e5e7eb; padding:1px; }
+      #float-calc .calc-pad button { border:none; background:#f9fafb; padding:0.55rem 0;
+                    font-size:0.95rem; cursor:pointer; transition:background 0.15s; }
+      #float-calc .calc-pad button:hover { background:#f3f4f6; }
+      #float-calc .calc-pad button.op { background:#fed7aa; color:#9a3412; font-weight:600; }
+      #float-calc .calc-pad button.op:hover { background:#fdba74; }
+      #float-calc .calc-pad button.eq { background:#f97316; color:#fff; font-weight:700; }
+      #float-calc .calc-pad button.eq:hover { background:#ea6c0a; }
+      #float-calc .calc-pad button.fn { background:#e5e7eb; color:#374151; font-weight:600; }
     </style>
 </head>
 <body class="antialiased">
@@ -486,6 +514,7 @@
               <input type="date" id="production-end-date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
           </div>
           <button id="save-production-plan-btn" class="py-2 px-4 rounded-lg font-semibold btn-primary">Guardar Plan</button>
+          <button id="open-calc-btn" type="button" class="py-2 px-4 rounded-lg font-semibold btn-secondary">🧮 Calculadora</button>
         </div>
         <div id="production-details" class="space-y-8"></div>
       </div>
@@ -495,6 +524,36 @@
       </div>
     </section>
   </main>
+</div>
+
+<!-- Calculadora flotante -->
+<div id="float-calc" class="hidden">
+  <div class="calc-header" id="calc-header">
+    <span>🧮 Calculadora</span>
+    <button type="button" class="calc-close" id="calc-close-btn" title="Cerrar">&times;</button>
+  </div>
+  <div class="calc-display" id="calc-display">0</div>
+  <div class="calc-pad">
+    <button type="button" class="fn" data-calc="C">C</button>
+    <button type="button" class="fn" data-calc="back">⌫</button>
+    <button type="button" class="fn" data-calc="%">%</button>
+    <button type="button" class="op" data-calc="/">÷</button>
+    <button type="button" data-calc="7">7</button>
+    <button type="button" data-calc="8">8</button>
+    <button type="button" data-calc="9">9</button>
+    <button type="button" class="op" data-calc="*">×</button>
+    <button type="button" data-calc="4">4</button>
+    <button type="button" data-calc="5">5</button>
+    <button type="button" data-calc="6">6</button>
+    <button type="button" class="op" data-calc="-">−</button>
+    <button type="button" data-calc="1">1</button>
+    <button type="button" data-calc="2">2</button>
+    <button type="button" data-calc="3">3</button>
+    <button type="button" class="op" data-calc="+">+</button>
+    <button type="button" data-calc="0">0</button>
+    <button type="button" data-calc=".">.</button>
+    <button type="button" class="eq" data-calc="=" style="grid-column: span 2;">=</button>
+  </div>
 </div>
 
 <!-- Generic Modal -->
@@ -746,6 +805,50 @@ async function startApp() {
       currentProductionOrder = { items:[] };
     });
     document.getElementById('search-dish-input').addEventListener('input', renderDishesList);
+    setupFloatingCalculator();
+  };
+
+  // ── Calculadora flotante (solo herramienta de pantalla, no toca datos) ──
+  const setupFloatingCalculator = () => {
+    const calc=document.getElementById('float-calc'); if(!calc) return;
+    const disp=document.getElementById('calc-display');
+    let expr='';
+    const symbols={'*':' × ','/':' ÷ ','-':' − ','+':' + ','%':' % '};
+    const render=()=>{ disp.textContent = expr ? expr.replace(/[*/+\-%]/g,m=>symbols[m]||m) : '0'; };
+    const isOp=ch=>['+','-','*','/'].includes(ch);
+    calc.querySelectorAll('.calc-pad button').forEach(b=>b.addEventListener('click',()=>{
+      const v=b.dataset.calc;
+      if(v==='C'){ expr=''; }
+      else if(v==='back'){ expr=expr.slice(0,-1); }
+      else if(v==='='){
+        try{
+          const e=expr.replace(/%/g,'/100');
+          if(!e||!/^[0-9+\-*/.() ]+$/.test(e)){ render(); return; }
+          const r=Function('"use strict";return ('+e+')')();
+          expr=(!isFinite(r)||isNaN(r))?'':String(Math.round(r*1e6)/1e6);
+        }catch(_){ /* expresión inválida: se mantiene */ }
+      }
+      else if(isOp(v)){ if(expr===''&&v!=='-') return; if(isOp(expr.slice(-1))) expr=expr.slice(0,-1); expr+=v; }
+      else { expr+=v; }
+      render();
+    }));
+    render();
+    document.getElementById('open-calc-btn')?.addEventListener('click',()=>calc.classList.toggle('hidden'));
+    document.getElementById('calc-close-btn')?.addEventListener('click',()=>calc.classList.add('hidden'));
+    // Arrastrar la ventana
+    const header=document.getElementById('calc-header');
+    let drag=false,ox=0,oy=0;
+    const start=e=>{ drag=true; const p=e.touches?e.touches[0]:e; const r=calc.getBoundingClientRect();
+      ox=p.clientX-r.left; oy=p.clientY-r.top; calc.style.right='auto'; };
+    const move=e=>{ if(!drag) return; const p=e.touches?e.touches[0]:e;
+      if(e.cancelable) e.preventDefault();
+      let x=p.clientX-ox, y=p.clientY-oy;
+      x=Math.max(0,Math.min(x,window.innerWidth-calc.offsetWidth));
+      y=Math.max(0,Math.min(y,window.innerHeight-calc.offsetHeight));
+      calc.style.left=x+'px'; calc.style.top=y+'px'; };
+    const end=()=>{ drag=false; };
+    header.addEventListener('mousedown',start); document.addEventListener('mousemove',move); document.addEventListener('mouseup',end);
+    header.addEventListener('touchstart',start,{passive:true}); document.addEventListener('touchmove',move,{passive:false}); document.addEventListener('touchend',end);
   };
 
   // ══════════════════════════════════
@@ -1012,7 +1115,7 @@ async function startApp() {
     };
     const renderDishBlock=g=>{
       const rows=g.comps.length
-        ? g.comps.map(cc=>`<div class="flex justify-between border-b border-gray-100 py-0.5 text-sm"><span>${cc.name}</span><span class="font-mono">${cc.quantity.toFixed(2)} ${cc.unit}</span></div>`).join('')
+        ? g.comps.map(cc=>`<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-sm cursor-pointer"><input type="checkbox" class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${cc.name}</span><span class="font-mono">${cc.quantity.toFixed(2)} ${cc.unit}</span></span></label>`).join('')
         : '<p class="text-xs text-gray-400 italic">Sin componentes registrados</p>';
       return `<div class="mb-3 bg-white rounded border border-gray-200 break-inside-avoid">
         <div class="flex justify-between items-center bg-gray-100 px-2 py-1 rounded-t">
@@ -1066,7 +1169,7 @@ async function startApp() {
           <h4 class="font-bold text-lg text-orange-500 mb-3">Total de Ingredientes a Alistar</h4>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">`;
       Object.values(totalIngs).sort((a,b)=>a.name.localeCompare(b.name)).forEach(i=>{
-        html+=`<div class="flex justify-between border-b border-gray-100 py-1"><span>${i.name}</span><span class="font-mono font-semibold">${i.quantity.toFixed(2)} ${i.unit}</span></div>`;
+        html+=`<label class="flex items-center gap-2 border-b border-gray-100 py-1 cursor-pointer"><input type="checkbox" class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono font-semibold">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;
       });
       html+=`</div></div>`;
       html+=consHtml;
@@ -1076,7 +1179,7 @@ async function startApp() {
         const iHtml=items.map(it=>`<li class="flex justify-between text-xs py-0.5"><span class="font-bold">${it.quantity} x ${it.name}</span><span class="text-gray-600">${fmtCur(it.unitCost)} c/u</span></li>`).join('');
         let ingHtml='';
         items.forEach(it=>{ const di=getBI(it.id,it.quantity);
-          const ilist=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<div class="flex justify-between border-b border-gray-100 py-0.5 text-xs"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></div>`).join('');
+          const ilist=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-xs cursor-pointer"><input type="checkbox" class="prod-check w-3.5 h-3.5 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`).join('');
           if(ilist) ingHtml+=`<div class="mb-2"><h6 class="font-bold text-xs text-gray-800 bg-gray-100 p-1 rounded">Para ${it.quantity} x ${it.name}:</h6><div class="space-y-0.5 pt-1 pl-2">${ilist}</div></div>`;
         });
         html+=`<div class="p-3 bg-white rounded border mb-4 shadow-md">
