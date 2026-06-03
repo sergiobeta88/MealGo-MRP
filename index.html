@@ -367,12 +367,17 @@
           <label class="block text-sm font-medium text-gray-700">Buscar Ingrediente</label>
           <input type="text" id="search-inventory-input" placeholder="Escribe para buscar…" class="mt-1 block w-full md:w-1/2 border border-gray-300 rounded-md shadow-sm py-2 px-3">
         </div>
+        <div id="inventory-total-monitor" class="mb-4 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-center justify-between">
+          <span class="text-sm font-semibold text-orange-700 uppercase tracking-wide">Valor Total del Inventario</span>
+          <span id="inventory-total-value" class="text-2xl font-bold text-gray-800 font-mono">—</span>
+        </div>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50"><tr>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ingrediente</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cant. Disponible</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unidad</th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Valor Inventario</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actualizar Cantidad</th>
               <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
             </tr></thead>
@@ -644,6 +649,7 @@ async function startApp() {
   let editingDishId = null;
   let currentDishComponents = [];
   let currentProductionOrder = { items: [] };
+  const prodChecks = {}; // estado (en memoria) de las casillas de chequeo del plan de producción
   let _savePending = false;
   let _saveTimer  = null;
 
@@ -795,6 +801,12 @@ async function startApp() {
     document.getElementById('save-production-plan-btn').addEventListener('click', handleSaveProductionPlan);
     document.getElementById('production-details').addEventListener('click', e => {
       if (e.target.classList.contains('btn-execute-daily-production')) handleExecuteDailyProduction(e.target.dataset.date);
+    });
+    document.getElementById('production-details').addEventListener('change', e => {
+      const cb=e.target;
+      if (cb.classList && cb.classList.contains('prod-check') && cb.dataset.ck){
+        if (cb.checked) prodChecks[cb.dataset.ck]=true; else delete prodChecks[cb.dataset.ck];
+      }
     });
     document.getElementById('export-data-btn').addEventListener('click', exportData);
     document.getElementById('import-file').addEventListener('change', importData);
@@ -1115,7 +1127,7 @@ async function startApp() {
     };
     const renderDishBlock=g=>{
       const rows=g.comps.length
-        ? g.comps.map(cc=>`<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-sm cursor-pointer"><input type="checkbox" class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${cc.name}</span><span class="font-mono">${cc.quantity.toFixed(2)} ${cc.unit}</span></span></label>`).join('')
+        ? g.comps.map(cc=>{const ck=`c2|${g.date}|${g.id}|${cc.name}`;return `<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-sm cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${cc.name}</span><span class="font-mono">${cc.quantity.toFixed(2)} ${cc.unit}</span></span></label>`;}).join('')
         : '<p class="text-xs text-gray-400 italic">Sin componentes registrados</p>';
       return `<div class="mb-3 bg-white rounded border border-gray-200 break-inside-avoid">
         <div class="flex justify-between items-center bg-gray-100 px-2 py-1 rounded-t">
@@ -1142,7 +1154,7 @@ async function startApp() {
       }));
       const finals=[], preps=[];
       Object.values(dishGroups).forEach(g=>{
-        const entry={...g,comps:Object.values(getDirect(g.id,g.totalQty)).sort((a,b)=>a.name.localeCompare(b.name))};
+        const entry={...g,date,comps:Object.values(getDirect(g.id,g.totalQty)).sort((a,b)=>a.name.localeCompare(b.name))};
         (g.dishType==='preparation'?preps:finals).push(entry);
       });
       finals.sort((a,b)=>a.name.localeCompare(b.name));
@@ -1169,7 +1181,8 @@ async function startApp() {
           <h4 class="font-bold text-lg text-orange-500 mb-3">Total de Ingredientes a Alistar</h4>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">`;
       Object.values(totalIngs).sort((a,b)=>a.name.localeCompare(b.name)).forEach(i=>{
-        html+=`<label class="flex items-center gap-2 border-b border-gray-100 py-1 cursor-pointer"><input type="checkbox" class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono font-semibold">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;
+        const ck=`c1|${date}|${i.name}`;
+        html+=`<label class="flex items-center gap-2 border-b border-gray-100 py-1 cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono font-semibold">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;
       });
       html+=`</div></div>`;
       html+=consHtml;
@@ -1179,7 +1192,7 @@ async function startApp() {
         const iHtml=items.map(it=>`<li class="flex justify-between text-xs py-0.5"><span class="font-bold">${it.quantity} x ${it.name}</span><span class="text-gray-600">${fmtCur(it.unitCost)} c/u</span></li>`).join('');
         let ingHtml='';
         items.forEach(it=>{ const di=getBI(it.id,it.quantity);
-          const ilist=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-xs cursor-pointer"><input type="checkbox" class="prod-check w-3.5 h-3.5 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`).join('');
+          const ilist=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>{const ck=`c3|${date}|${order.id||order.shortId||''}|${it.id}|${i.name}`;return `<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-xs cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;}).join('');
           if(ilist) ingHtml+=`<div class="mb-2"><h6 class="font-bold text-xs text-gray-800 bg-gray-100 p-1 rounded">Para ${it.quantity} x ${it.name}:</h6><div class="space-y-0.5 pt-1 pl-2">${ilist}</div></div>`;
         });
         html+=`<div class="p-3 bg-white rounded border mb-4 shadow-md">
@@ -1231,17 +1244,23 @@ async function startApp() {
     }));
   };
 
+  const getInventoryUnitCost = ing => (ing && ing.purchasePrice && ing.consumptionQty) ? ing.purchasePrice/ing.consumptionQty : 0;
   const renderInventoryList = () => {
     const list=document.getElementById('inventory-list');
     const term=document.getElementById('search-inventory-input').value.toLowerCase();
     list.innerHTML='';
+    // Monitor: valor total del inventario (todos los ingredientes)
+    const totalValue=state.ingredients.reduce((t,ing)=>t+(ing.inventoryQty||0)*getInventoryUnitCost(ing),0);
+    const tv=document.getElementById('inventory-total-value'); if(tv) tv.textContent=fmtCur(totalValue);
     const filtered=state.ingredients.filter(i=>i.name.toLowerCase().includes(term));
-    if(!filtered.length){ list.innerHTML='<tr><td colspan="5" class="text-center py-4 text-gray-500">No hay ingredientes.</td></tr>'; return; }
+    if(!filtered.length){ list.innerHTML='<tr><td colspan="6" class="text-center py-4 text-gray-500">No hay ingredientes.</td></tr>'; return; }
     filtered.sort((a,b)=>a.name.localeCompare(b.name)).forEach(ing=>{
+      const invValue=(ing.inventoryQty||0)*getInventoryUnitCost(ing);
       const row=document.createElement('tr');
       row.innerHTML=`<td class="px-6 py-4 whitespace-nowrap">${ing.name}</td>
         <td class="px-6 py-4 whitespace-nowrap font-bold">${ing.inventoryQty.toFixed(2)}</td>
         <td class="px-6 py-4 whitespace-nowrap">${ing.consumptionUnit}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-right font-mono font-semibold">${fmtCur(invValue)}</td>
         <td class="px-6 py-4 whitespace-nowrap">
           <div class="flex items-center gap-2">
             <input type="number" step="any" placeholder="Cantidad" class="w-24 border-gray-300 rounded-md shadow-sm text-sm" id="inv-qty-${ing.id}">
