@@ -14,7 +14,7 @@
     ============================================================ -->
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-      import { getDatabase, ref, set, get }
+      import { getDatabase, ref, set, get, onValue }
         from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
       import { getAnalytics }
         from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
@@ -61,6 +61,14 @@
             return snap.exists() ? snap.val() : null;
           }
           catch(e) { log('❌ Error lectura: ' + e.message); console.error("Firebase load error:", e); return null; }
+        };
+
+        // Escucha en tiempo real: avisa cuando otro equipo cambia los datos
+        window._fbSubscribe = (cb) => {
+          try {
+            onValue(ref(db, 'mealgo/state'), (snap) => cb(snap.exists() ? snap.val() : null));
+            return true;
+          } catch(e) { console.error("Firebase subscribe error:", e); return false; }
         };
 
         window._firebaseReady = true;
@@ -652,6 +660,9 @@ async function startApp() {
   const prodChecks = {}; // estado (en memoria) de las casillas de chequeo del plan de producción
   let _savePending = false;
   let _saveTimer  = null;
+  // Sincronización entre equipos: identificador único de esta pestaña + control de eco
+  const CLIENT_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  let _firstSnapshot = true;
 
   const sections  = { dashboard:'dashboard-section', clients:'clients-section',
     ingredients:'ingredients-section', inventory:'inventory-section',
@@ -669,7 +680,8 @@ async function startApp() {
     _saveTimer = setTimeout(async () => {
       setStatus('saving');
       if (window._fbSave) {
-        const ok = await window._fbSave(state);
+        // Marcamos el autor para que el resto de equipos sepan que el cambio no es suyo
+        const ok = await window._fbSave({ ...state, _meta: { writer: CLIENT_ID, ts: Date.now() } });
         setStatus(ok ? 'connected' : 'error');
       } else {
         setStatus('error');
@@ -677,43 +689,64 @@ async function startApp() {
     }, 800);
   };
 
+  // Normaliza y migra los datos crudos de Firebase a la forma que usa la app
+  const buildStateFromData = (data) => {
+    const s = {
+      ingredients:          data.ingredients          || [],
+      ingredientTypes:      data.ingredientTypes      || [],
+      dishes:               data.dishes               || [],
+      clients:              data.clients              || [],
+      customerOrders:       data.customerOrders       || data.dishesToProduce || [],
+      savedShoppingLists:   data.savedShoppingLists   || [],
+      savedProductionPlans: data.savedProductionPlans || [],
+      executedProductions:  data.executedProductions  || [],
+      lastOrderSequence:    data.lastOrderSequence    || {},
+    };
+    // migraciones
+    s.ingredients.forEach(i => {
+      if (typeof i.inventoryQty  !== 'number') i.inventoryQty  = 0;
+      if (typeof i.minPurchaseQty!== 'number') i.minPurchaseQty= 1;
+      if (typeof i.typeId        === 'undefined') i.typeId    = null;
+    });
+    s.savedShoppingLists.forEach(l => {
+      if (!l.status) l.status = 'completed';
+      (l.items || []).forEach(it => { if (typeof it.isPurchased === 'undefined') it.isPurchased = true; });
+    });
+    s.savedProductionPlans.forEach(p => {
+      if (typeof p.isExecuted !== 'boolean') p.isExecuted = false;
+    });
+    s.customerOrders.forEach(o => {
+      if (!o.shortId && o.id) o.shortId = `OLD-${o.id.substring(0,6)}`;
+    });
+    return s;
+  };
+
   const loadState = async () => {
     let data = null;
     if (window._fbLoad) {
       data = await window._fbLoad();
-      setStatus(data !== null ? 'connected' : 'connected'); // connected either way
+      setStatus('connected');
     }
-
     history = [];
-    if (data) {
-      state = {
-        ingredients:          data.ingredients          || [],
-        ingredientTypes:      data.ingredientTypes      || [],
-        dishes:               data.dishes               || [],
-        clients:              data.clients              || [],
-        customerOrders:       data.customerOrders       || data.dishesToProduce || [],
-        savedShoppingLists:   data.savedShoppingLists   || [],
-        savedProductionPlans: data.savedProductionPlans || [],
-        executedProductions:  data.executedProductions  || [],
-        lastOrderSequence:    data.lastOrderSequence    || {},
-      };
-      // migraciones
-      state.ingredients.forEach(i => {
-        if (typeof i.inventoryQty  !== 'number') i.inventoryQty  = 0;
-        if (typeof i.minPurchaseQty!== 'number') i.minPurchaseQty= 1;
-        if (typeof i.typeId        === 'undefined') i.typeId    = null;
-      });
-      state.savedShoppingLists.forEach(l => {
-        if (!l.status) l.status = 'completed';
-        l.items.forEach(it => { if (typeof it.isPurchased === 'undefined') it.isPurchased = true; });
-      });
-      state.savedProductionPlans.forEach(p => {
-        if (typeof p.isExecuted !== 'boolean') p.isExecuted = false;
-      });
-      state.customerOrders.forEach(o => {
-        if (!o.shortId && o.id) o.shortId = `OLD-${o.id.substring(0,6)}`;
-      });
-    }
+    if (data) state = buildStateFromData(data);
+  };
+
+  // Se ejecuta cuando OTRO equipo modifica los datos (escucha en tiempo real)
+  const applyRemoteState = (data) => {
+    if (!data) return;
+    // La primera emisión es la foto que ya cargamos al abrir: la ignoramos
+    if (_firstSnapshot) { _firstSnapshot = false; return; }
+    // Si el cambio lo hicimos nosotros mismos, es solo el eco de nuestro guardado
+    if (data._meta && data._meta.writer === CLIENT_ID) return;
+    // Cambio hecho por otro equipo: actualizamos la pantalla sin volver a guardar
+    state = buildStateFromData(data);
+    history = []; // el historial local de "deshacer" ya no es coherente con el cambio externo
+    renderAll();
+    setStatus('connected');
+  };
+
+  const subscribeToRemoteChanges = () => {
+    if (window._fbSubscribe) window._fbSubscribe(applyRemoteState);
   };
 
   const updateState = (newState, recordHistory = true) => {
@@ -2069,6 +2102,7 @@ async function startApp() {
     document.getElementById('production-end-date').value=today;
     populateMonthFilter();
     navigateTo('dashboard');
+    subscribeToRemoteChanges(); // a partir de aquí, los cambios de otros equipos llegan solos
   };
 
   await init();
