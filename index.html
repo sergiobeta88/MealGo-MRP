@@ -2279,19 +2279,24 @@ async function startApp() {
       </div>`).join('');
   };
 
+  // Resumen con precio de cada ítem por separado + total (usado en recibidos y en la confirmación)
+  const orderDetailHtml = o => {
+    const det=o.pedidos.map((p,idx)=>{
+      const itemName=p.itemName||p.dishName||'(plato)';
+      const itemPrice=(p.itemPrice!=null?p.itemPrice:(p.dishPrice!=null?p.dishPrice:0));
+      const lines=[`<div class="flex justify-between"><span class="font-medium text-gray-800">${itemName}</span><span class="font-mono">${fmtCur(itemPrice)}</span></div>`];
+      (p.adicionales||[]).forEach(a=>lines.push(`<div class="flex justify-between text-gray-500 pl-3"><span>+ ${a.name}</span><span class="font-mono">${fmtCur(a.price)}</span></div>`));
+      lines.push(`<div class="flex justify-between border-t border-gray-100 mt-0.5 pt-0.5"><span class="text-gray-500">Subtotal pedido ${idx+1}</span><span class="font-mono font-semibold">${fmtCur(p.subtotal)}</span></div>`);
+      return `<div class="text-sm mb-2">${lines.join('')}</div>`;
+    }).join('');
+    return `${det}<div class="flex justify-between border-t pt-1 mt-1 font-bold"><span class="text-gray-800">Valor a pagar total</span><span class="text-orange-500 font-mono">${fmtCur(o.total)}</span></div>`;
+  };
+
   const renderMenuOrdersReceived = () => {
     const cont=document.getElementById('menu-orders-received'); if(!cont) return;
     const orders=[...state.menuOrders].reverse();
     if(!orders.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no se han recibido pedidos.</p>'; return; }
     cont.innerHTML = orders.map(o=>{
-      const det=o.pedidos.map((p,idx)=>{
-        const itemName=p.itemName||p.dishName||'(plato)';
-        const itemPrice=(p.itemPrice!=null?p.itemPrice:(p.dishPrice!=null?p.dishPrice:0));
-        const lines=[`<div class="flex justify-between"><span class="font-medium text-gray-800">${itemName}</span><span class="font-mono">${fmtCur(itemPrice)}</span></div>`];
-        (p.adicionales||[]).forEach(a=>lines.push(`<div class="flex justify-between text-gray-500 pl-3"><span>+ ${a.name}</span><span class="font-mono">${fmtCur(a.price)}</span></div>`));
-        lines.push(`<div class="flex justify-between border-t border-gray-100 mt-0.5 pt-0.5"><span class="text-gray-500">Subtotal pedido ${idx+1}</span><span class="font-mono font-semibold">${fmtCur(p.subtotal)}</span></div>`);
-        return `<div class="text-sm mb-2">${lines.join('')}</div>`;
-      }).join('');
       const contact=[o.clientEmail,o.clientPhone,o.clientAddress].filter(Boolean).join(' · ');
       return `<div class="p-3 border rounded-lg bg-white">
         <div class="flex justify-between items-start flex-wrap gap-2">
@@ -2300,8 +2305,7 @@ async function startApp() {
             ${contact?`<p class="text-xs text-gray-500">${contact}</p>`:''}</div>
           <button type="button" data-orderid="${o.id}" class="menu-order-delete-btn text-red-500 font-bold px-1" title="Eliminar pedido">✕</button>
         </div>
-        <div class="mt-2">${det}</div>
-        <div class="flex justify-between border-t pt-1 mt-1 font-bold"><span class="text-gray-800">Valor a pagar total</span><span class="text-orange-500 font-mono">${fmtCur(o.total)}</span></div>
+        <div class="mt-2">${orderDetailHtml(o)}</div>
       </div>`;
     }).join('');
   };
@@ -2399,12 +2403,15 @@ async function startApp() {
   const handleConfirmMenuOrder = () => {
     if (!state.menu.length) { showMenuOrderMsg('<p class="text-red-700 font-semibold">El menú no tiene ítems disponibles.</p>', false); return; }
     const email=(document.getElementById('menu-order-email').value||'').trim();
-    if (!email) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Ingresa tu correo electrónico.</p>', false); return; }
     const name=(document.getElementById('menu-order-name').value||'').trim();
     const lastname=(document.getElementById('menu-order-lastname').value||'').trim();
     const whatsapp=(document.getElementById('menu-order-whatsapp').value||'').trim();
     const address=(document.getElementById('menu-order-address').value||'').trim();
-    if (!name) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Ingresa tu nombre.</p>', false); return; }
+    // Todos los datos personales son obligatorios
+    if (!email || !name || !lastname || !whatsapp || !address) {
+      showMenuOrderMsg('<p class="text-red-700 font-semibold">Completa todos tus datos: correo, nombre, apellido, WhatsApp y dirección de entrega.</p>', false);
+      return;
+    }
     syncDraft();
     if (menuDraft.pedidos.some(p=>!p.itemId)) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Selecciona el plato principal en todos los pedidos.</p>', false); return; }
     const total = menuOrderTotal();
@@ -2419,14 +2426,22 @@ async function startApp() {
     if (nuevoCliente) {
       client = { id:`client-${Date.now()}`, name, lastname, contact:whatsapp, whatsapp, email, address, status:'activo' };
       ns.clients.push(client);
+    } else {
+      // Cliente existente: si cambió algún dato personal, actualizarlo en el módulo de clientes
+      const idx = ns.clients.findIndex(c=>c.id===client.id);
+      if (idx>-1) { ns.clients[idx] = { ...ns.clients[idx], name, lastname, whatsapp, contact:whatsapp, address }; client = ns.clients[idx]; }
     }
     const order = { id:`morder-${Date.now()}`, shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
       clientId:client.id, clientName:`${name} ${lastname}`.trim(), clientEmail:email, clientPhone:whatsapp, clientAddress:address,
       pedidos, total };
     ns.menuOrders.push(order); updateState(ns);
-    showMenuOrderMsg(`<h3 class="text-xl font-bold text-green-700 mb-1">¡Pedido confirmado! (${order.shortId})</h3>
-      <p class="text-gray-700">Total a pagar: <span class="font-bold font-mono">${fmtCur(order.total)}</span></p>
-      <p class="text-sm text-gray-500 mt-1">Gracias, ${name}. Tu pedido fue registrado${nuevoCliente?' y fuiste guardado como nuevo cliente':''}.</p>`, true);
+    showMenuOrderMsg(`<h3 class="text-xl font-bold text-green-700 mb-2">¡Pedido confirmado! (${order.shortId})</h3>
+      <p class="text-sm text-gray-600 mb-2">Gracias, ${name}. Este es el resumen de tu pedido:</p>
+      ${orderDetailHtml(order)}
+      <div class="mt-3 p-3 bg-white border border-green-300 rounded-lg text-center">
+        <p class="font-semibold text-gray-800">Enviar pago a nequi / llave Bre-b:</p>
+        <p class="text-lg font-bold text-green-700 font-mono">3214190410</p>
+      </div>`, true);
     menuDraft = { count:1, pedidos:[{itemId:'',adicionales:[]}] };
     ['menu-order-email','menu-order-name','menu-order-lastname','menu-order-whatsapp','menu-order-address'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     const cc=document.getElementById('menu-order-count'); if(cc) cc.value='1';
