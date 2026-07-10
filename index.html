@@ -411,6 +411,8 @@
             <select id="dish-type" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
               <option value="final">Plato Final</option>
               <option value="preparation">Preparaciones / Acompañantes</option>
+              <option value="ensaladas">Ensaladas</option>
+              <option value="adobos">Adobos</option>
             </select></div>
           <div>
             <h3 class="text-lg font-semibold text-gray-700 mb-2">Componentes del Plato</h3>
@@ -451,6 +453,14 @@
         <div class="mt-8">
           <h3 class="text-xl font-bold text-gray-700 mb-2 border-b pb-2">Preparaciones / Acompañantes</h3>
           <div id="preparations-list" class="space-y-4"></div>
+        </div>
+        <div class="mt-8">
+          <h3 class="text-xl font-bold text-gray-700 mb-2 border-b pb-2">Ensaladas</h3>
+          <div id="ensaladas-dishes-list" class="space-y-4"></div>
+        </div>
+        <div class="mt-8">
+          <h3 class="text-xl font-bold text-gray-700 mb-2 border-b pb-2">Adobos</h3>
+          <div id="adobos-dishes-list" class="space-y-4"></div>
         </div>
       </div>
     </section>
@@ -552,7 +562,7 @@
       <div id="menu-admin-view" class="space-y-6">
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-4">Platos Principales del Menú</h2>
-          <p class="text-sm text-gray-500 mb-4">Crea cada ítem del menú con un nombre propio, elige uno o varios platos que lo componen (agrupados por tipo) y asígnale su precio de venta al público.</p>
+          <p class="text-sm text-gray-500 mb-4">Crea cada ítem del menú con un nombre propio, elige uno o varios platos que lo componen (agrupados por tipo, con su costo) y asígnale su precio de venta al público.</p>
           <div class="p-3 bg-gray-50 rounded-md mb-4 space-y-3">
             <div class="flex flex-wrap items-end gap-2">
               <div class="flex-grow min-w-[220px]">
@@ -569,31 +579,15 @@
               <label class="block text-sm font-medium text-gray-700 mb-1">Platos que componen el ítem</label>
               <div id="menu-item-dish-checklist" class="border border-gray-200 rounded-md bg-white p-2 max-h-56 overflow-y-auto"></div>
             </div>
+            <p class="text-sm text-right text-gray-700">Costo del ítem: <span id="menu-item-cost" class="font-bold font-mono text-gray-900">$ 0</span></p>
           </div>
           <div id="menu-main-list" class="space-y-2"></div>
         </div>
 
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-4">Adicionales Disponibles</h2>
-          <p class="text-sm text-gray-500 mb-4">Crea los adicionales seleccionándolos del listado de platos (agrupados por tipo), con su nombre y precio de venta.</p>
-          <div class="p-3 bg-gray-50 rounded-md mb-4 space-y-3">
-            <div class="flex flex-wrap items-end gap-2">
-              <div class="flex-grow min-w-[220px]">
-                <label class="block text-sm font-medium text-gray-700">Nombre del adicional</label>
-                <input type="text" id="adicional-item-name" placeholder="Ej: Porción extra de arroz" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
-              </div>
-              <div class="w-40">
-                <label class="block text-sm font-medium text-gray-700">Precio venta (COP)</label>
-                <input type="number" id="adicional-item-price" min="0" step="50" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
-              </div>
-              <button type="button" id="adicional-item-add-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary whitespace-nowrap">Añadir adicional</button>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Platos que componen el adicional</label>
-              <div id="adicional-item-dish-checklist" class="border border-gray-200 rounded-md bg-white p-2 max-h-56 overflow-y-auto"></div>
-            </div>
-          </div>
-          <div id="adicionales-list" class="space-y-2"></div>
+          <p class="text-sm text-gray-500 mb-4">Marca los platos que estarán disponibles como adicional (agrupados por tipo) y escribe su precio de venta. Se muestra el costo de cada plato.</p>
+          <div id="adicionales-checklist" class="border border-gray-200 rounded-md bg-white p-2 max-h-96 overflow-y-auto"></div>
         </div>
 
         <div class="card">
@@ -838,10 +832,12 @@ async function startApp() {
       const d = m.dishId ? s.dishes.find(x => x.id === m.dishId) : null;
       return { id: m.id || `menu-${idx}-${Date.now()}`, name: m.name || (d ? d.name : 'Plato'), dishIds: m.dishId ? [m.dishId] : [], price: m.price || 0 };
     });
-    // Adicionales: asegurar dishIds (los antiguos solo tenían nombre y precio)
-    s.adicionales = s.adicionales.map((a, idx) => ({
-      id: a.id || `adic-${idx}-${Date.now()}`, name: a.name || '', dishIds: Array.isArray(a.dishIds) ? a.dishIds : [], price: a.price || 0
-    }));
+    // Adicionales: nuevo modelo = plato marcado + precio {dishId, price} (sin nombre manual)
+    s.adicionales = (s.adicionales || []).map(a => {
+      if (a.dishId) return { dishId: a.dishId, price: a.price || 0 };
+      if (Array.isArray(a.dishIds) && a.dishIds.length) return { dishId: a.dishIds[0], price: a.price || 0 };
+      return null;
+    }).filter(Boolean);
     return s;
   };
 
@@ -909,6 +905,11 @@ async function startApp() {
     const yf  = ing.yield / 100;
     return yf > 0 ? ppu / yf : 0;
   };
+
+  const DISH_TYPE_LABELS = { final:'Plato Final', preparation:'Preparación / Acompañante', ensaladas:'Ensalada', adobos:'Adobo' };
+  const dishTypeLabel = t => DISH_TYPE_LABELS[t] || DISH_TYPE_LABELS.final;
+  const DISH_GROUPS = [ ['final','Platos Finales'], ['preparation','Preparaciones / Acompañantes'], ['ensaladas','Ensaladas'], ['adobos','Adobos'] ];
+  const dishTypeGroup = t => (t==='preparation'||t==='ensaladas'||t==='adobos') ? t : 'final';
 
   const calculateDishCost = dish => {
     if (!dish||!dish.components) return 0;
@@ -1126,14 +1127,11 @@ async function startApp() {
   };
 
   const renderDishesList = () => {
-    const fl=document.getElementById('final-dishes-list');
-    const pl=document.getElementById('preparations-list');
+    const containers = { final:'final-dishes-list', preparation:'preparations-list', ensaladas:'ensaladas-dishes-list', adobos:'adobos-dishes-list' };
+    const els = {}; Object.keys(containers).forEach(k=>{ els[k]=document.getElementById(containers[k]); if(els[k]) els[k].innerHTML=''; });
     const term=document.getElementById('search-dish-input').value.toLowerCase();
-    fl.innerHTML=''; pl.innerHTML='';
-    if (!state.dishes.length){ fl.innerHTML='<p class="text-gray-500 text-center">No hay platos creados.</p>'; return; }
+    if (!state.dishes.length){ if(els.final) els.final.innerHTML='<p class="text-gray-500 text-center">No hay platos creados.</p>'; return; }
     const filtered=state.dishes.filter(d=>d.name.toLowerCase().includes(term));
-    const finals=filtered.filter(d=>d.dishType!=='preparation');
-    const preps=filtered.filter(d=>d.dishType==='preparation');
 
     const mkCard = dish => {
       const cost=calculateDishCost(dish);
@@ -1142,12 +1140,12 @@ async function startApp() {
         if(comp.type==='ingredient'){ const i=state.ingredients.find(x=>x.id===comp.id);
           if(i){name=i.name;unit=comp.unit||i.consumptionUnit;cc=getBaseUnitCost(i)*comp.quantity;} }
         else{ const s=state.dishes.find(x=>x.id===comp.id);
-          if(s){name=`(${s.dishType==='preparation'?'Prep.':'Plato'}) ${s.name}`;unit='un';cc=calculateDishCost(s)*comp.quantity;} }
+          if(s){name=`(${dishTypeLabel(s.dishType)}) ${s.name}`;unit='un';cc=calculateDishCost(s)*comp.quantity;} }
         return `<li class="text-sm text-gray-600 flex justify-between">
           <span>${comp.quantity} ${unit} de ${name}</span>
           <span class="font-semibold">${fmtCur(cc)}</span></li>`;
       }).join('');
-      const tl=dish.dishType==='preparation'?'Preparación / Acompañante':'Plato Final';
+      const tl=dishTypeLabel(dish.dishType);
       const card=document.createElement('div');
       card.className='p-4 border rounded-lg bg-white shadow-sm';
       card.innerHTML=`<div class="flex justify-between items-start">
@@ -1167,10 +1165,12 @@ async function startApp() {
       return card;
     };
 
-    if(!finals.length) fl.innerHTML='<p class="text-gray-500 text-center">No se encontraron platos finales.</p>';
-    else finals.forEach(d=>fl.appendChild(mkCard(d)));
-    if(!preps.length) pl.innerHTML='<p class="text-gray-500 text-center">No se encontraron preparaciones.</p>';
-    else preps.forEach(d=>pl.appendChild(mkCard(d)));
+    DISH_GROUPS.forEach(([key])=>{
+      const el=els[key]; if(!el) return;
+      const arr=filtered.filter(d=>dishTypeGroup(d.dishType)===key);
+      if(!arr.length) el.innerHTML='<p class="text-gray-500 text-center">No hay platos en esta categoría.</p>';
+      else arr.forEach(d=>el.appendChild(mkCard(d)));
+    });
   };
 
   const renderSavedOrders = () => {
@@ -2212,29 +2212,52 @@ async function startApp() {
   // ══════════════════════════════════
   let menuDraft = { count: 1, pedidos: [ { itemId: '', adicionales: [] } ] };
   let menuBuilder = { dishIds: [] };   // platos seleccionados para el nuevo ítem del menú
-  let adicBuilder = { dishIds: [] };   // platos seleccionados para el nuevo adicional
+
+  const dishCostById = id => { const d=state.dishes.find(x=>x.id===id); return d?calculateDishCost(d):0; };
+  const itemCost = m => (m.dishIds||[]).reduce((t,id)=>t+dishCostById(id),0);
+  const adicName = dishId => { const d=state.dishes.find(x=>x.id===dishId); return d?d.name:'(plato eliminado)'; };
 
   const renderMenuModule = () => {
     renderDishChecklistGrouped('menu-item-dish-checklist', menuBuilder.dishIds, 'menu-item-dish-check');
-    renderDishChecklistGrouped('adicional-item-dish-checklist', adicBuilder.dishIds, 'adic-item-dish-check');
+    updateMenuItemBuilderCost();
+    renderAdicionalesChecklist();
     renderMenuMainList();
-    renderAdicionalesList();
     renderMenuOrdersReceived();
     renderPedidoBlocks();
     updateMenuOrderTotal();
   };
 
-  // Checklist de platos agrupada por tipo (platos finales / preparaciones)
+  // Checklist de platos agrupada por tipo, mostrando el costo de cada plato (constructor de ítems)
   const renderDishChecklistGrouped = (containerId, selectedIds, cssClass) => {
     const cont = document.getElementById(containerId); if (!cont) return;
     if (!state.dishes.length) { cont.innerHTML = '<p class="text-xs text-gray-400 italic">No hay platos creados.</p>'; return; }
-    const finals = state.dishes.filter(d=>d.dishType!=='preparation').sort((a,b)=>a.name.localeCompare(b.name));
-    const preps  = state.dishes.filter(d=>d.dishType==='preparation').sort((a,b)=>a.name.localeCompare(b.name));
     const group = (title, arr) => arr.length ? `<div class="mb-2"><p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">${title}</p>${arr.map(d=>{
         const chk = selectedIds.includes(d.id) ? 'checked' : '';
-        return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" class="${cssClass} accent-orange-500" data-dishid="${d.id}" ${chk}><span>${d.name}</span></label>`;
+        return `<label class="flex items-center justify-between gap-2 text-sm cursor-pointer py-0.5"><span class="flex items-center gap-2"><input type="checkbox" class="${cssClass} accent-orange-500" data-dishid="${d.id}" ${chk}><span>${d.name}</span></span><span class="text-xs text-gray-500 whitespace-nowrap">${fmtCur(calculateDishCost(d))}</span></label>`;
       }).join('')}</div>` : '';
-    cont.innerHTML = group('Platos finales', finals) + group('Preparaciones / Acompañantes', preps);
+    cont.innerHTML = DISH_GROUPS.map(([key,label])=>group(label, state.dishes.filter(d=>dishTypeGroup(d.dishType)===key).sort((a,b)=>a.name.localeCompare(b.name)))).join('');
+  };
+
+  const updateMenuItemBuilderCost = () => {
+    const el=document.getElementById('menu-item-cost'); if(!el) return;
+    el.textContent = fmtCur(menuBuilder.dishIds.reduce((t,id)=>t+dishCostById(id),0));
+  };
+
+  // Adicionales: checklist de platos (agrupada por tipo) con costo y precio de venta, sin nombre manual
+  const renderAdicionalesChecklist = () => {
+    const cont=document.getElementById('adicionales-checklist'); if(!cont) return;
+    if(!state.dishes.length){ cont.innerHTML='<p class="text-xs text-gray-400 italic">No hay platos creados.</p>'; return; }
+    const group=(title,arr)=> arr.length ? `<div class="mb-2"><p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">${title}</p>${arr.map(d=>{
+        const adic=state.adicionales.find(a=>a.dishId===d.id);
+        const checked=adic?'checked':'';
+        const price=adic?adic.price:'';
+        return `<div class="flex items-center gap-2 py-1 flex-wrap border-b border-gray-50">
+          <label class="flex items-center gap-2 text-sm cursor-pointer flex-grow min-w-[150px]"><input type="checkbox" class="adic-check accent-orange-500" data-dishid="${d.id}" ${checked}><span>${d.name}</span></label>
+          <span class="text-xs text-gray-500 whitespace-nowrap">Costo: ${fmtCur(calculateDishCost(d))}</span>
+          <div class="flex items-center gap-1"><span class="text-sm text-gray-500">Venta $</span><input type="number" min="0" step="50" value="${price}" placeholder="0" data-dishid="${d.id}" class="adic-price w-24 border-gray-300 rounded-md shadow-sm text-right font-mono text-sm"></div>
+        </div>`;
+      }).join('')}</div>` : '';
+    cont.innerHTML = DISH_GROUPS.map(([key,label])=>group(label, state.dishes.filter(d=>dishTypeGroup(d.dishType)===key).sort((a,b)=>a.name.localeCompare(b.name)))).join('');
   };
 
   const dishNamesFor = ids => (ids||[]).map(id=>{ const d=state.dishes.find(x=>x.id===id); return d?d.name:'(eliminado)'; }).join(', ');
@@ -2244,22 +2267,11 @@ async function startApp() {
     if(!state.menu.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no hay ítems en el menú.</p>'; return; }
     cont.innerHTML = state.menu.map(m=>`<div class="flex flex-wrap items-center gap-3 p-2 border rounded-lg bg-white">
         <div class="flex-grow min-w-[200px]"><span class="font-semibold text-gray-800">${m.name||'(sin nombre)'}</span>
-          <p class="text-xs text-gray-500">${dishNamesFor(m.dishIds)||'—'}</p></div>
-        <div class="flex items-center gap-1"><span class="text-sm text-gray-500">$</span>
+          <p class="text-xs text-gray-500">${dishNamesFor(m.dishIds)||'—'}</p>
+          <p class="text-xs text-gray-500">Costo del ítem: <span class="font-semibold">${fmtCur(itemCost(m))}</span></p></div>
+        <div class="flex items-center gap-1"><span class="text-sm text-gray-500">Venta $</span>
           <input type="number" min="0" step="50" value="${m.price}" data-itemid="${m.id}" class="menu-price-input w-32 border-gray-300 rounded-md shadow-sm text-right font-mono"></div>
         <button type="button" data-itemid="${m.id}" class="menu-remove-btn text-red-500 font-bold px-2" title="Quitar del menú">✕</button>
-      </div>`).join('');
-  };
-
-  const renderAdicionalesList = () => {
-    const cont=document.getElementById('adicionales-list'); if(!cont) return;
-    if(!state.adicionales.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no hay adicionales.</p>'; return; }
-    cont.innerHTML = state.adicionales.map(a=>`<div class="flex flex-wrap items-center gap-3 p-2 border rounded-lg bg-white">
-        <div class="flex-grow min-w-[200px]"><input type="text" value="${(a.name||'').replace(/"/g,'&quot;')}" data-adicid="${a.id}" class="adic-name-input w-full border-gray-300 rounded-md shadow-sm">
-          <p class="text-xs text-gray-500 mt-1">${dishNamesFor(a.dishIds)||'—'}</p></div>
-        <div class="flex items-center gap-1"><span class="text-sm text-gray-500">$</span>
-          <input type="number" min="0" step="50" value="${a.price}" data-adicid="${a.id}" class="adic-price-input w-32 border-gray-300 rounded-md shadow-sm text-right font-mono"></div>
-        <button type="button" data-adicid="${a.id}" class="adic-remove-btn text-red-500 font-bold px-2" title="Eliminar">✕</button>
       </div>`).join('');
   };
 
@@ -2271,18 +2283,21 @@ async function startApp() {
       const det=o.pedidos.map((p,idx)=>{ const adis=p.adicionales&&p.adicionales.length?' + '+p.adicionales.map(a=>a.name).join(', '):''; return `<li class="text-sm text-gray-600">Pedido ${idx+1}: <span class="font-medium">${p.itemName||p.dishName||'(plato)'}</span>${adis} — ${fmtCur(p.subtotal)}</li>`; }).join('');
       const contact=[o.clientEmail,o.clientPhone,o.clientAddress].filter(Boolean).join(' · ');
       return `<div class="p-3 border rounded-lg bg-white">
-        <div class="flex justify-between items-center flex-wrap gap-2">
+        <div class="flex justify-between items-start flex-wrap gap-2">
           <div><span class="font-bold text-gray-800">${o.clientName||'Cliente sin nombre'}</span>
             <span class="text-xs text-gray-400 ml-2">${o.shortId} · ${o.date}</span>
             ${contact?`<p class="text-xs text-gray-500">${contact}</p>`:''}</div>
-          <span class="font-bold text-orange-500 font-mono">${fmtCur(o.total)}</span>
+          <div class="flex items-center gap-3"><span class="font-bold text-orange-500 font-mono">${fmtCur(o.total)}</span>
+            <button type="button" data-orderid="${o.id}" class="menu-order-delete-btn text-red-500 font-bold px-1" title="Eliminar pedido">✕</button></div>
         </div>
         <ul class="mt-2 space-y-0.5 pl-1">${det}</ul>
       </div>`;
     }).join('');
   };
 
-  // ---- Formulario de pedido (cliente) ----
+  const handleDeleteMenuOrder = id => { const ns=JSON.parse(JSON.stringify(state)); ns.menuOrders=ns.menuOrders.filter(o=>o.id!==id); updateState(ns); };
+
+  // ---- Formulario de pedido (cliente): SOLO precios de venta ----
   const pedidoSubtotal = p => {
     const m = state.menu.find(x=>x.id===p.itemId);
     const base = m ? (m.price||0) : 0;
@@ -2300,8 +2315,8 @@ async function startApp() {
     menuDraft.pedidos.forEach(p=>{
       if (p.itemId && !state.menu.some(m=>m.id===p.itemId)) p.itemId='';
       p.adicionales = (p.adicionales||[])
-        .filter(a=>state.adicionales.some(s=>s.id===a.id))
-        .map(a=>{ const s=state.adicionales.find(x=>x.id===a.id); return { id:s.id, name:s.name, price:s.price }; });
+        .filter(a=>state.adicionales.some(s=>s.dishId===a.dishId))
+        .map(a=>{ const s=state.adicionales.find(x=>x.dishId===a.dishId); return { dishId:s.dishId, name:adicName(s.dishId), price:s.price }; });
     });
   };
 
@@ -2316,7 +2331,7 @@ async function startApp() {
     cont.innerHTML = menuDraft.pedidos.map((p,i)=>{
       const opts = `<option value="">— Selecciona un plato —</option>` + state.menu.map(m=>`<option value="${m.id}" ${p.itemId===m.id?'selected':''}>${m.name} — ${fmtCur(m.price)}</option>`).join('');
       const adics = state.adicionales.length
-        ? state.adicionales.map(a=>{ const checked=p.adicionales.some(x=>x.id===a.id)?'checked':''; return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" data-pedido="${i}" data-adicid="${a.id}" class="menu-adic-check accent-orange-500" ${checked}><span>${a.name} <span class="text-gray-400">(${fmtCur(a.price)})</span></span></label>`; }).join('')
+        ? state.adicionales.map(a=>{ const checked=p.adicionales.some(x=>x.dishId===a.dishId)?'checked':''; return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" data-pedido="${i}" data-dishid="${a.dishId}" class="menu-adic-check accent-orange-500" ${checked}><span>${adicName(a.dishId)} <span class="text-gray-400">(${fmtCur(a.price)})</span></span></label>`; }).join('')
         : '<p class="text-xs text-gray-400 italic">No hay adicionales disponibles.</p>';
       const sub = pedidoSubtotal(p);
       return `<div class="p-4 border rounded-lg bg-gray-50">
@@ -2351,7 +2366,6 @@ async function startApp() {
     conf.scrollIntoView({ behavior:'smooth', block:'nearest' });
   };
 
-  // Autocompletado del cliente por correo
   const lookupClientByEmail = email => {
     const e=(email||'').trim().toLowerCase(); if(!e) return null;
     return state.clients.find(c=>(c.email||'').trim().toLowerCase()===e) || null;
@@ -2386,7 +2400,7 @@ async function startApp() {
     const pedidos = menuDraft.pedidos.map(p=>{
       const m=state.menu.find(x=>x.id===p.itemId);
       return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:m?(m.price||0):0,
-        adicionales:(p.adicionales||[]).map(a=>({id:a.id,name:a.name,price:a.price})), subtotal:pedidoSubtotal(p) };
+        adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };
     });
     const ns = JSON.parse(JSON.stringify(state));
     let client = lookupClientByEmail(email);
@@ -2413,10 +2427,8 @@ async function startApp() {
     const on = (id,ev,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener(ev,fn); };
     on('menu-tab-admin','click',()=>switchMenuTab('admin'));
     on('menu-tab-order','click',()=>switchMenuTab('order'));
-    // checklists de construcción (agrupadas por tipo)
-    on('menu-item-dish-checklist','change',e=>{ if(e.target.classList.contains('menu-item-dish-check')){ const id=e.target.dataset.dishid, i=menuBuilder.dishIds.indexOf(id); if(e.target.checked&&i<0)menuBuilder.dishIds.push(id); else if(!e.target.checked&&i>=0)menuBuilder.dishIds.splice(i,1); } });
-    on('adicional-item-dish-checklist','change',e=>{ if(e.target.classList.contains('adic-item-dish-check')){ const id=e.target.dataset.dishid, i=adicBuilder.dishIds.indexOf(id); if(e.target.checked&&i<0)adicBuilder.dishIds.push(id); else if(!e.target.checked&&i>=0)adicBuilder.dishIds.splice(i,1); } });
-    // añadir ítem del menú (compuesto de varios platos)
+    // checklist del constructor de ítems (con costo en vivo)
+    on('menu-item-dish-checklist','change',e=>{ if(e.target.classList.contains('menu-item-dish-check')){ const id=e.target.dataset.dishid, i=menuBuilder.dishIds.indexOf(id); if(e.target.checked&&i<0)menuBuilder.dishIds.push(id); else if(!e.target.checked&&i>=0)menuBuilder.dishIds.splice(i,1); updateMenuItemBuilderCost(); } });
     on('menu-item-add-btn','click',()=>{
       const nameEl=document.getElementById('menu-item-name'), priceEl=document.getElementById('menu-item-price');
       const name=(nameEl.value||'').trim();
@@ -2424,21 +2436,25 @@ async function startApp() {
       if(!menuBuilder.dishIds.length){ showMenuOrderMsg('<p class="text-red-700 font-semibold">Selecciona al menos un plato para el ítem.</p>', false); switchMenuTab('admin'); return; }
       const ns=JSON.parse(JSON.stringify(state)); ns.menu.push({ id:`menu-${Date.now()}`, name, dishIds:[...menuBuilder.dishIds], price:parseFloat(priceEl.value)||0 }); updateState(ns);
       nameEl.value=''; priceEl.value=''; menuBuilder.dishIds=[];
-      renderDishChecklistGrouped('menu-item-dish-checklist', menuBuilder.dishIds, 'menu-item-dish-check');
+      renderDishChecklistGrouped('menu-item-dish-checklist', menuBuilder.dishIds, 'menu-item-dish-check'); updateMenuItemBuilderCost();
     });
     on('menu-main-list','change',e=>{ if(e.target.classList.contains('menu-price-input')){ const id=e.target.dataset.itemid, ns=JSON.parse(JSON.stringify(state)); const m=ns.menu.find(x=>x.id===id); if(m){ m.price=parseFloat(e.target.value)||0; updateState(ns);} } });
     on('menu-main-list','click',e=>{ if(e.target.classList.contains('menu-remove-btn')){ const id=e.target.dataset.itemid, ns=JSON.parse(JSON.stringify(state)); ns.menu=ns.menu.filter(x=>x.id!==id); updateState(ns);} });
-    // añadir adicional (seleccionado del listado de platos agrupado)
-    on('adicional-item-add-btn','click',()=>{
-      const nameEl=document.getElementById('adicional-item-name'), priceEl=document.getElementById('adicional-item-price');
-      const name=(nameEl.value||'').trim();
-      if(!name){ nameEl.focus(); return; }
-      const ns=JSON.parse(JSON.stringify(state)); ns.adicionales.push({ id:`adic-${Date.now()}`, name, dishIds:[...adicBuilder.dishIds], price:parseFloat(priceEl.value)||0 }); updateState(ns);
-      nameEl.value=''; priceEl.value=''; adicBuilder.dishIds=[];
-      renderDishChecklistGrouped('adicional-item-dish-checklist', adicBuilder.dishIds, 'adic-item-dish-check');
+    // adicionales: marcar plato + precio (sin nombre)
+    on('adicionales-checklist','change',e=>{
+      const t=e.target, id=t.dataset.dishid; if(!id) return;
+      const ns=JSON.parse(JSON.stringify(state));
+      if(t.classList.contains('adic-check')){
+        if(t.checked){ if(!ns.adicionales.some(a=>a.dishId===id)){ const priceEl=document.querySelector(`.adic-price[data-dishid="${id}"]`); const price=priceEl?(parseFloat(priceEl.value)||0):0; ns.adicionales.push({dishId:id, price}); } }
+        else { ns.adicionales=ns.adicionales.filter(a=>a.dishId!==id); }
+        updateState(ns);
+      } else if(t.classList.contains('adic-price')){
+        const a=ns.adicionales.find(x=>x.dishId===id);
+        if(a){ a.price=parseFloat(t.value)||0; updateState(ns); }
+      }
     });
-    on('adicionales-list','change',e=>{ const id=e.target.dataset.adicid; if(!id) return; const ns=JSON.parse(JSON.stringify(state)); const a=ns.adicionales.find(x=>x.id===id); if(!a) return; if(e.target.classList.contains('adic-name-input')) a.name=(e.target.value||'').trim(); else if(e.target.classList.contains('adic-price-input')) a.price=parseFloat(e.target.value)||0; updateState(ns); });
-    on('adicionales-list','click',e=>{ if(e.target.classList.contains('adic-remove-btn')){ const id=e.target.dataset.adicid, ns=JSON.parse(JSON.stringify(state)); ns.adicionales=ns.adicionales.filter(x=>x.id!==id); updateState(ns);} });
+    // pedidos recibidos: eliminar
+    on('menu-orders-received','click',e=>{ if(e.target.classList.contains('menu-order-delete-btn')){ handleDeleteMenuOrder(e.target.dataset.orderid); } });
     // formulario de pedido
     on('menu-order-email','change',applyClientAutofill);
     on('menu-order-email','blur',applyClientAutofill);
@@ -2446,8 +2462,8 @@ async function startApp() {
     on('menu-order-pedidos','change',e=>{
       const t=e.target;
       if (t.classList.contains('menu-plato-select')) { const i=+t.dataset.pedido; if (menuDraft.pedidos[i]) menuDraft.pedidos[i].itemId=t.value; renderPedidoBlocks(); updateMenuOrderTotal(); }
-      else if (t.classList.contains('menu-adic-check')) { const i=+t.dataset.pedido, aid=t.dataset.adicid, adic=state.adicionales.find(a=>a.id===aid);
-        if (menuDraft.pedidos[i] && adic) { const arr=menuDraft.pedidos[i].adicionales, idx=arr.findIndex(x=>x.id===aid); if (t.checked&&idx<0) arr.push({id:adic.id,name:adic.name,price:adic.price}); else if (!t.checked&&idx>=0) arr.splice(idx,1); }
+      else if (t.classList.contains('menu-adic-check')) { const i=+t.dataset.pedido, did=t.dataset.dishid, adic=state.adicionales.find(a=>a.dishId===did);
+        if (menuDraft.pedidos[i] && adic) { const arr=menuDraft.pedidos[i].adicionales, idx=arr.findIndex(x=>x.dishId===did); if (t.checked&&idx<0) arr.push({dishId:adic.dishId,name:adicName(adic.dishId),price:adic.price}); else if (!t.checked&&idx>=0) arr.splice(idx,1); }
         renderPedidoBlocks(); updateMenuOrderTotal(); }
     });
     on('menu-order-confirm-btn','click',handleConfirmMenuOrder);
