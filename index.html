@@ -266,6 +266,8 @@
             <div><label class="block text-sm font-medium text-gray-700">Correo Electrónico</label>
               <input type="email" id="client-email" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
           </div>
+          <div><label class="block text-sm font-medium text-gray-700">Dirección de Entrega</label>
+            <input type="text" id="client-address" placeholder="Dirección para domicilios" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
           <div><label class="block text-sm font-medium text-gray-700">Estado</label>
             <select id="client-status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
               <option value="activo">Activo</option>
@@ -285,6 +287,7 @@
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacto</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dirección</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
               <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
             </tr></thead>
@@ -549,34 +552,46 @@
       <div id="menu-admin-view" class="space-y-6">
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-4">Platos Principales del Menú</h2>
-          <p class="text-sm text-gray-500 mb-4">Selecciona los platos (finales o preparaciones) que estarán disponibles para pedir y asígnales su precio de venta al público.</p>
-          <div class="flex flex-wrap items-end gap-2 p-3 bg-gray-50 rounded-md mb-4">
-            <div class="flex-grow min-w-[220px]">
-              <label class="block text-sm font-medium text-gray-700">Plato</label>
-              <select id="menu-add-dish-selector" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></select>
+          <p class="text-sm text-gray-500 mb-4">Crea cada ítem del menú con un nombre propio, elige uno o varios platos que lo componen (agrupados por tipo) y asígnale su precio de venta al público.</p>
+          <div class="p-3 bg-gray-50 rounded-md mb-4 space-y-3">
+            <div class="flex flex-wrap items-end gap-2">
+              <div class="flex-grow min-w-[220px]">
+                <label class="block text-sm font-medium text-gray-700">Nombre del ítem</label>
+                <input type="text" id="menu-item-name" placeholder="Ej: Almuerzo Ejecutivo" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+              </div>
+              <div class="w-40">
+                <label class="block text-sm font-medium text-gray-700">Precio venta (COP)</label>
+                <input type="number" id="menu-item-price" min="0" step="50" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+              </div>
+              <button type="button" id="menu-item-add-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary whitespace-nowrap">Añadir al menú</button>
             </div>
-            <div class="w-40">
-              <label class="block text-sm font-medium text-gray-700">Precio venta (COP)</label>
-              <input type="number" id="menu-add-price" min="0" step="50" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Platos que componen el ítem</label>
+              <div id="menu-item-dish-checklist" class="border border-gray-200 rounded-md bg-white p-2 max-h-56 overflow-y-auto"></div>
             </div>
-            <button type="button" id="menu-add-dish-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary whitespace-nowrap">Añadir al menú</button>
           </div>
           <div id="menu-main-list" class="space-y-2"></div>
         </div>
 
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-4">Adicionales Disponibles</h2>
-          <p class="text-sm text-gray-500 mb-4">Crea los adicionales que el cliente podrá agregar a cada plato, con su precio de venta.</p>
-          <div class="flex flex-wrap items-end gap-2 p-3 bg-gray-50 rounded-md mb-4">
-            <div class="flex-grow min-w-[220px]">
-              <label class="block text-sm font-medium text-gray-700">Nombre del adicional</label>
-              <input type="text" id="adicional-add-name" placeholder="Ej: Porción extra de arroz" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+          <p class="text-sm text-gray-500 mb-4">Crea los adicionales seleccionándolos del listado de platos (agrupados por tipo), con su nombre y precio de venta.</p>
+          <div class="p-3 bg-gray-50 rounded-md mb-4 space-y-3">
+            <div class="flex flex-wrap items-end gap-2">
+              <div class="flex-grow min-w-[220px]">
+                <label class="block text-sm font-medium text-gray-700">Nombre del adicional</label>
+                <input type="text" id="adicional-item-name" placeholder="Ej: Porción extra de arroz" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+              </div>
+              <div class="w-40">
+                <label class="block text-sm font-medium text-gray-700">Precio venta (COP)</label>
+                <input type="number" id="adicional-item-price" min="0" step="50" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+              </div>
+              <button type="button" id="adicional-item-add-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary whitespace-nowrap">Añadir adicional</button>
             </div>
-            <div class="w-40">
-              <label class="block text-sm font-medium text-gray-700">Precio venta (COP)</label>
-              <input type="number" id="adicional-add-price" min="0" step="50" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Platos que componen el adicional</label>
+              <div id="adicional-item-dish-checklist" class="border border-gray-200 rounded-md bg-white p-2 max-h-56 overflow-y-auto"></div>
             </div>
-            <button type="button" id="adicional-add-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary whitespace-nowrap">Añadir adicional</button>
           </div>
           <div id="adicionales-list" class="space-y-2"></div>
         </div>
@@ -591,16 +606,29 @@
       <div id="menu-order-view" class="hidden space-y-6">
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-1">Haz tu Pedido</h2>
-          <p class="text-sm text-gray-500 mb-4">Selecciona cuántos pedidos quieres, elige el plato principal y los adicionales de cada uno.</p>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div><label class="block text-sm font-medium text-gray-700">Tu nombre</label>
-              <input type="text" id="menu-order-client-name" placeholder="Nombre (opcional)" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
-            <div><label class="block text-sm font-medium text-gray-700">Teléfono</label>
-              <input type="text" id="menu-order-client-phone" placeholder="Teléfono (opcional)" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
-            <div><label class="block text-sm font-medium text-gray-700">¿Cuántos pedidos deseas?</label>
-              <input type="number" id="menu-order-count" min="1" value="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+          <p class="text-sm text-gray-500 mb-4">Ingresa tu correo: si ya eres cliente traeremos tus datos; si eres nuevo, complétalos.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-700">Correo electrónico *</label>
+              <input type="email" id="menu-order-email" placeholder="tucorreo@ejemplo.com" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div class="flex items-end">
+              <p id="menu-order-client-status" class="text-sm font-medium"></p>
+            </div>
           </div>
-          <div id="menu-order-pedidos" class="space-y-4"></div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div><label class="block text-sm font-medium text-gray-700">Nombre</label>
+              <input type="text" id="menu-order-name" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Apellido</label>
+              <input type="text" id="menu-order-lastname" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">WhatsApp</label>
+              <input type="tel" id="menu-order-whatsapp" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Dirección de entrega</label>
+              <input type="text" id="menu-order-address" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+          </div>
+          <div class="mt-4 max-w-xs">
+            <label class="block text-sm font-medium text-gray-700">¿Cuántos pedidos deseas?</label>
+            <input type="number" id="menu-order-count" min="1" value="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+          </div>
+          <div id="menu-order-pedidos" class="space-y-4 mt-4"></div>
         </div>
         <div class="card flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
@@ -800,6 +828,20 @@ async function startApp() {
     s.customerOrders.forEach(o => {
       if (!o.shortId && o.id) o.shortId = `OLD-${o.id.substring(0,6)}`;
     });
+    // Clientes: asegurar campo dirección
+    s.clients.forEach(c => { if (typeof c.address === 'undefined') c.address = ''; });
+    // Menú: migrar del formato antiguo {dishId, price} al nuevo {id, name, dishIds:[], price}
+    s.menu = s.menu.map((m, idx) => {
+      if (Array.isArray(m.dishIds)) {
+        return { id: m.id || `menu-${idx}-${Date.now()}`, name: m.name || '', dishIds: m.dishIds, price: m.price || 0 };
+      }
+      const d = m.dishId ? s.dishes.find(x => x.id === m.dishId) : null;
+      return { id: m.id || `menu-${idx}-${Date.now()}`, name: m.name || (d ? d.name : 'Plato'), dishIds: m.dishId ? [m.dishId] : [], price: m.price || 0 };
+    });
+    // Adicionales: asegurar dishIds (los antiguos solo tenían nombre y precio)
+    s.adicionales = s.adicionales.map((a, idx) => ({
+      id: a.id || `adic-${idx}-${Date.now()}`, name: a.name || '', dishIds: Array.isArray(a.dishIds) ? a.dishIds : [], price: a.price || 0
+    }));
     return s;
   };
 
@@ -1062,13 +1104,14 @@ async function startApp() {
   const renderClientsList = () => {
     const list = document.getElementById('clients-list');
     list.innerHTML='';
-    if (!state.clients.length){ list.innerHTML='<tr><td colspan="5" class="text-center py-4 text-gray-500">No hay clientes.</td></tr>'; return; }
+    if (!state.clients.length){ list.innerHTML='<tr><td colspan="6" class="text-center py-4 text-gray-500">No hay clientes.</td></tr>'; return; }
     state.clients.forEach(c=>{
       const row=document.createElement('tr');
       row.id=`client-row-${c.id}`;
       row.innerHTML=`<td class="px-6 py-4 whitespace-nowrap">${c.name} ${c.lastname}</td>
-        <td class="px-6 py-4 whitespace-nowrap">${c.contact}</td>
-        <td class="px-6 py-4 whitespace-nowrap">${c.email}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${c.contact||''}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${c.email||''}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${c.address||''}</td>
         <td class="px-6 py-4 whitespace-nowrap">
           <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${c.status==='activo'?'bg-green-100 text-green-800':'bg-red-100 text-red-800'}">${c.status}</span>
         </td>
@@ -1781,6 +1824,7 @@ async function startApp() {
       contact:document.getElementById('client-contact').value,
       whatsapp:document.getElementById('client-whatsapp').value,
       email:document.getElementById('client-email').value,
+      address:document.getElementById('client-address').value,
       status:document.getElementById('client-status').value};
     if(nc.name&&nc.lastname){ const ns=JSON.parse(JSON.stringify(state)); ns.clients.push(nc); updateState(ns); e.target.reset(); }
   };
@@ -1788,8 +1832,9 @@ async function startApp() {
   const handleEditClient = id => {
     const c=state.clients.find(x=>x.id===id); const row=document.getElementById(`client-row-${id}`); if(!c||!row) return;
     row.innerHTML=`<td class="px-2 py-2"><input type="text" value="${c.name}" data-field="name" class="w-full border rounded px-1 py-1"></td>
-      <td class="px-2 py-2"><input type="text" value="${c.contact}" data-field="contact" class="w-full border rounded px-1 py-1"></td>
-      <td class="px-2 py-2"><input type="email" value="${c.email}" data-field="email" class="w-full border rounded px-1 py-1"></td>
+      <td class="px-2 py-2"><input type="text" value="${c.contact||''}" data-field="contact" class="w-full border rounded px-1 py-1"></td>
+      <td class="px-2 py-2"><input type="email" value="${c.email||''}" data-field="email" class="w-full border rounded px-1 py-1"></td>
+      <td class="px-2 py-2"><input type="text" value="${(c.address||'').replace(/"/g,'&quot;')}" data-field="address" class="w-full border rounded px-1 py-1"></td>
       <td class="px-2 py-2"><select data-field="status" class="w-full border rounded px-1 py-1">
         <option value="activo" ${c.status==='activo'?'selected':''}>Activo</option>
         <option value="inactivo" ${c.status==='inactivo'?'selected':''}>Inactivo</option>
@@ -1801,6 +1846,7 @@ async function startApp() {
         name:row.querySelector('[data-field="name"]').value,
         contact:row.querySelector('[data-field="contact"]').value,
         email:row.querySelector('[data-field="email"]').value,
+        address:row.querySelector('[data-field="address"]').value,
         status:row.querySelector('[data-field="status"]').value}; updateState(ns); }
     });
   };
@@ -2164,10 +2210,13 @@ async function startApp() {
   // ══════════════════════════════════
   //   MÓDULO MENÚ Y PEDIDOS
   // ══════════════════════════════════
-  let menuDraft = { count: 1, pedidos: [ { dishId: '', adicionales: [] } ] };
+  let menuDraft = { count: 1, pedidos: [ { itemId: '', adicionales: [] } ] };
+  let menuBuilder = { dishIds: [] };   // platos seleccionados para el nuevo ítem del menú
+  let adicBuilder = { dishIds: [] };   // platos seleccionados para el nuevo adicional
 
   const renderMenuModule = () => {
-    populateMenuDishSelector();
+    renderDishChecklistGrouped('menu-item-dish-checklist', menuBuilder.dishIds, 'menu-item-dish-check');
+    renderDishChecklistGrouped('adicional-item-dish-checklist', adicBuilder.dishIds, 'adic-item-dish-check');
     renderMenuMainList();
     renderAdicionalesList();
     renderMenuOrdersReceived();
@@ -2175,38 +2224,39 @@ async function startApp() {
     updateMenuOrderTotal();
   };
 
-  const populateMenuDishSelector = () => {
-    const sel = document.getElementById('menu-add-dish-selector');
-    if (!sel) return;
-    const onMenu = new Set(state.menu.map(m=>m.dishId));
-    const available = state.dishes.filter(d=>!onMenu.has(d.id)).sort((a,b)=>a.name.localeCompare(b.name));
-    sel.innerHTML = available.length
-      ? available.map(d=>`<option value="${d.id}">${d.name} (${d.dishType==='preparation'?'preparación':'plato final'})</option>`).join('')
-      : '<option value="">— Todos los platos ya están en el menú —</option>';
+  // Checklist de platos agrupada por tipo (platos finales / preparaciones)
+  const renderDishChecklistGrouped = (containerId, selectedIds, cssClass) => {
+    const cont = document.getElementById(containerId); if (!cont) return;
+    if (!state.dishes.length) { cont.innerHTML = '<p class="text-xs text-gray-400 italic">No hay platos creados.</p>'; return; }
+    const finals = state.dishes.filter(d=>d.dishType!=='preparation').sort((a,b)=>a.name.localeCompare(b.name));
+    const preps  = state.dishes.filter(d=>d.dishType==='preparation').sort((a,b)=>a.name.localeCompare(b.name));
+    const group = (title, arr) => arr.length ? `<div class="mb-2"><p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">${title}</p>${arr.map(d=>{
+        const chk = selectedIds.includes(d.id) ? 'checked' : '';
+        return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" class="${cssClass} accent-orange-500" data-dishid="${d.id}" ${chk}><span>${d.name}</span></label>`;
+      }).join('')}</div>` : '';
+    cont.innerHTML = group('Platos finales', finals) + group('Preparaciones / Acompañantes', preps);
   };
 
+  const dishNamesFor = ids => (ids||[]).map(id=>{ const d=state.dishes.find(x=>x.id===id); return d?d.name:'(eliminado)'; }).join(', ');
+
   const renderMenuMainList = () => {
-    const cont = document.getElementById('menu-main-list');
-    if (!cont) return;
-    if (!state.menu.length) { cont.innerHTML = '<p class="text-gray-400 italic">Aún no hay platos en el menú.</p>'; return; }
-    cont.innerHTML = state.menu.map(m=>{
-      const d = state.dishes.find(x=>x.id===m.dishId);
-      const name = d ? d.name : '(plato eliminado)';
-      return `<div class="flex flex-wrap items-center gap-3 p-2 border rounded-lg bg-white">
-        <span class="flex-grow font-semibold text-gray-800">${name}</span>
+    const cont=document.getElementById('menu-main-list'); if(!cont) return;
+    if(!state.menu.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no hay ítems en el menú.</p>'; return; }
+    cont.innerHTML = state.menu.map(m=>`<div class="flex flex-wrap items-center gap-3 p-2 border rounded-lg bg-white">
+        <div class="flex-grow min-w-[200px]"><span class="font-semibold text-gray-800">${m.name||'(sin nombre)'}</span>
+          <p class="text-xs text-gray-500">${dishNamesFor(m.dishIds)||'—'}</p></div>
         <div class="flex items-center gap-1"><span class="text-sm text-gray-500">$</span>
-          <input type="number" min="0" step="50" value="${m.price}" data-dishid="${m.dishId}" class="menu-price-input w-32 border-gray-300 rounded-md shadow-sm text-right font-mono"></div>
-        <button type="button" data-dishid="${m.dishId}" class="menu-remove-btn text-red-500 font-bold px-2" title="Quitar del menú">✕</button>
-      </div>`;
-    }).join('');
+          <input type="number" min="0" step="50" value="${m.price}" data-itemid="${m.id}" class="menu-price-input w-32 border-gray-300 rounded-md shadow-sm text-right font-mono"></div>
+        <button type="button" data-itemid="${m.id}" class="menu-remove-btn text-red-500 font-bold px-2" title="Quitar del menú">✕</button>
+      </div>`).join('');
   };
 
   const renderAdicionalesList = () => {
-    const cont = document.getElementById('adicionales-list');
-    if (!cont) return;
-    if (!state.adicionales.length) { cont.innerHTML = '<p class="text-gray-400 italic">Aún no hay adicionales.</p>'; return; }
+    const cont=document.getElementById('adicionales-list'); if(!cont) return;
+    if(!state.adicionales.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no hay adicionales.</p>'; return; }
     cont.innerHTML = state.adicionales.map(a=>`<div class="flex flex-wrap items-center gap-3 p-2 border rounded-lg bg-white">
-        <input type="text" value="${(a.name||'').replace(/"/g,'&quot;')}" data-adicid="${a.id}" class="adic-name-input flex-grow min-w-[180px] border-gray-300 rounded-md shadow-sm">
+        <div class="flex-grow min-w-[200px]"><input type="text" value="${(a.name||'').replace(/"/g,'&quot;')}" data-adicid="${a.id}" class="adic-name-input w-full border-gray-300 rounded-md shadow-sm">
+          <p class="text-xs text-gray-500 mt-1">${dishNamesFor(a.dishIds)||'—'}</p></div>
         <div class="flex items-center gap-1"><span class="text-sm text-gray-500">$</span>
           <input type="number" min="0" step="50" value="${a.price}" data-adicid="${a.id}" class="adic-price-input w-32 border-gray-300 rounded-md shadow-sm text-right font-mono"></div>
         <button type="button" data-adicid="${a.id}" class="adic-remove-btn text-red-500 font-bold px-2" title="Eliminar">✕</button>
@@ -2214,19 +2264,17 @@ async function startApp() {
   };
 
   const renderMenuOrdersReceived = () => {
-    const cont = document.getElementById('menu-orders-received');
-    if (!cont) return;
-    const orders = [...state.menuOrders].reverse();
-    if (!orders.length) { cont.innerHTML = '<p class="text-gray-400 italic">Aún no se han recibido pedidos.</p>'; return; }
+    const cont=document.getElementById('menu-orders-received'); if(!cont) return;
+    const orders=[...state.menuOrders].reverse();
+    if(!orders.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no se han recibido pedidos.</p>'; return; }
     cont.innerHTML = orders.map(o=>{
-      const det = o.pedidos.map((p,idx)=>{
-        const adis = p.adicionales && p.adicionales.length ? ' + ' + p.adicionales.map(a=>a.name).join(', ') : '';
-        return `<li class="text-sm text-gray-600">Pedido ${idx+1}: <span class="font-medium">${p.dishName}</span>${adis} — ${fmtCur(p.subtotal)}</li>`;
-      }).join('');
+      const det=o.pedidos.map((p,idx)=>{ const adis=p.adicionales&&p.adicionales.length?' + '+p.adicionales.map(a=>a.name).join(', '):''; return `<li class="text-sm text-gray-600">Pedido ${idx+1}: <span class="font-medium">${p.itemName||p.dishName||'(plato)'}</span>${adis} — ${fmtCur(p.subtotal)}</li>`; }).join('');
+      const contact=[o.clientEmail,o.clientPhone,o.clientAddress].filter(Boolean).join(' · ');
       return `<div class="p-3 border rounded-lg bg-white">
         <div class="flex justify-between items-center flex-wrap gap-2">
-          <div><span class="font-bold text-gray-800">${o.clientName || 'Cliente sin nombre'}</span>
-            <span class="text-xs text-gray-400 ml-2">${o.shortId} · ${o.date}${o.clientPhone?(' · '+o.clientPhone):''}</span></div>
+          <div><span class="font-bold text-gray-800">${o.clientName||'Cliente sin nombre'}</span>
+            <span class="text-xs text-gray-400 ml-2">${o.shortId} · ${o.date}</span>
+            ${contact?`<p class="text-xs text-gray-500">${contact}</p>`:''}</div>
           <span class="font-bold text-orange-500 font-mono">${fmtCur(o.total)}</span>
         </div>
         <ul class="mt-2 space-y-0.5 pl-1">${det}</ul>
@@ -2236,7 +2284,7 @@ async function startApp() {
 
   // ---- Formulario de pedido (cliente) ----
   const pedidoSubtotal = p => {
-    const m = state.menu.find(x=>x.dishId===p.dishId);
+    const m = state.menu.find(x=>x.id===p.itemId);
     const base = m ? (m.price||0) : 0;
     const extra = (p.adicionales||[]).reduce((t,a)=>t+(a.price||0),0);
     return base + extra;
@@ -2247,11 +2295,10 @@ async function startApp() {
   const syncDraft = () => {
     const n = Math.max(1, parseInt(menuDraft.count,10) || 1);
     menuDraft.count = n;
-    while (menuDraft.pedidos.length < n) menuDraft.pedidos.push({ dishId:'', adicionales:[] });
+    while (menuDraft.pedidos.length < n) menuDraft.pedidos.push({ itemId:'', adicionales:[] });
     if (menuDraft.pedidos.length > n) menuDraft.pedidos.length = n;
-    // mantener el borrador coherente con el menú actual
     menuDraft.pedidos.forEach(p=>{
-      if (p.dishId && !state.menu.some(m=>m.dishId===p.dishId)) p.dishId='';
+      if (p.itemId && !state.menu.some(m=>m.id===p.itemId)) p.itemId='';
       p.adicionales = (p.adicionales||[])
         .filter(a=>state.adicionales.some(s=>s.id===a.id))
         .map(a=>{ const s=state.adicionales.find(x=>x.id===a.id); return { id:s.id, name:s.name, price:s.price }; });
@@ -2262,13 +2309,12 @@ async function startApp() {
     const cont = document.getElementById('menu-order-pedidos');
     if (!cont) return;
     if (!state.menu.length) {
-      cont.innerHTML = '<p class="text-gray-500 italic p-4 bg-gray-50 rounded-lg">El menú aún no tiene platos disponibles. Pide al administrador que configure el menú.</p>';
+      cont.innerHTML = '<p class="text-gray-500 italic p-4 bg-gray-50 rounded-lg">El menú aún no tiene ítems disponibles. Pide al administrador que configure el menú.</p>';
       return;
     }
     syncDraft();
-    const menuOptions = state.menu.map(m=>{ const d=state.dishes.find(x=>x.id===m.dishId); return d?{dishId:m.dishId,name:d.name,price:m.price}:null; }).filter(Boolean);
     cont.innerHTML = menuDraft.pedidos.map((p,i)=>{
-      const opts = `<option value="">— Selecciona un plato —</option>` + menuOptions.map(o=>`<option value="${o.dishId}" ${p.dishId===o.dishId?'selected':''}>${o.name} — ${fmtCur(o.price)}</option>`).join('');
+      const opts = `<option value="">— Selecciona un plato —</option>` + state.menu.map(m=>`<option value="${m.id}" ${p.itemId===m.id?'selected':''}>${m.name} — ${fmtCur(m.price)}</option>`).join('');
       const adics = state.adicionales.length
         ? state.adicionales.map(a=>{ const checked=p.adicionales.some(x=>x.id===a.id)?'checked':''; return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" data-pedido="${i}" data-adicid="${a.id}" class="menu-adic-check accent-orange-500" ${checked}><span>${a.name} <span class="text-gray-400">(${fmtCur(a.price)})</span></span></label>`; }).join('')
         : '<p class="text-xs text-gray-400 italic">No hay adicionales disponibles.</p>';
@@ -2305,30 +2351,61 @@ async function startApp() {
     conf.scrollIntoView({ behavior:'smooth', block:'nearest' });
   };
 
+  // Autocompletado del cliente por correo
+  const lookupClientByEmail = email => {
+    const e=(email||'').trim().toLowerCase(); if(!e) return null;
+    return state.clients.find(c=>(c.email||'').trim().toLowerCase()===e) || null;
+  };
+  const applyClientAutofill = () => {
+    const emailEl=document.getElementById('menu-order-email'); if(!emailEl) return;
+    const email=emailEl.value;
+    const status=document.getElementById('menu-order-client-status');
+    const nEl=document.getElementById('menu-order-name'), lEl=document.getElementById('menu-order-lastname'),
+          wEl=document.getElementById('menu-order-whatsapp'), aEl=document.getElementById('menu-order-address');
+    const c=lookupClientByEmail(email);
+    if(c){
+      nEl.value=c.name||''; lEl.value=c.lastname||''; wEl.value=c.whatsapp||c.contact||''; aEl.value=c.address||'';
+      if(status){ status.textContent='✅ Cliente registrado: datos cargados.'; status.className='text-sm font-medium text-green-600'; }
+    } else if((email||'').trim()){
+      if(status){ status.textContent='🆕 Cliente nuevo: completa tus datos.'; status.className='text-sm font-medium text-blue-600'; }
+    } else if(status){ status.textContent=''; }
+  };
+
   const handleConfirmMenuOrder = () => {
-    if (!state.menu.length) { showMenuOrderMsg('<p class="text-red-700 font-semibold">El menú no tiene platos disponibles.</p>', false); return; }
+    if (!state.menu.length) { showMenuOrderMsg('<p class="text-red-700 font-semibold">El menú no tiene ítems disponibles.</p>', false); return; }
+    const email=(document.getElementById('menu-order-email').value||'').trim();
+    if (!email) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Ingresa tu correo electrónico.</p>', false); return; }
+    const name=(document.getElementById('menu-order-name').value||'').trim();
+    const lastname=(document.getElementById('menu-order-lastname').value||'').trim();
+    const whatsapp=(document.getElementById('menu-order-whatsapp').value||'').trim();
+    const address=(document.getElementById('menu-order-address').value||'').trim();
+    if (!name) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Ingresa tu nombre.</p>', false); return; }
     syncDraft();
-    if (menuDraft.pedidos.some(p=>!p.dishId)) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Selecciona el plato principal en todos los pedidos.</p>', false); return; }
+    if (menuDraft.pedidos.some(p=>!p.itemId)) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Selecciona el plato principal en todos los pedidos.</p>', false); return; }
     const total = menuOrderTotal();
     const pedidos = menuDraft.pedidos.map(p=>{
-      const m=state.menu.find(x=>x.dishId===p.dishId), d=state.dishes.find(x=>x.id===p.dishId);
-      return { dishId:p.dishId, dishName:d?d.name:'(plato)', dishPrice:m?(m.price||0):0,
+      const m=state.menu.find(x=>x.id===p.itemId);
+      return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:m?(m.price||0):0,
         adicionales:(p.adicionales||[]).map(a=>({id:a.id,name:a.name,price:a.price})), subtotal:pedidoSubtotal(p) };
     });
-    const order = { id:`morder-${Date.now()}`, shortId:`PED-${Date.now().toString().slice(-6)}`,
-      date:new Date().toISOString().slice(0,10),
-      clientName:(document.getElementById('menu-order-client-name').value||'').trim(),
-      clientPhone:(document.getElementById('menu-order-client-phone').value||'').trim(),
+    const ns = JSON.parse(JSON.stringify(state));
+    let client = lookupClientByEmail(email);
+    const nuevoCliente = !client;
+    if (nuevoCliente) {
+      client = { id:`client-${Date.now()}`, name, lastname, contact:whatsapp, whatsapp, email, address, status:'activo' };
+      ns.clients.push(client);
+    }
+    const order = { id:`morder-${Date.now()}`, shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
+      clientId:client.id, clientName:`${name} ${lastname}`.trim(), clientEmail:email, clientPhone:whatsapp, clientAddress:address,
       pedidos, total };
-    const ns = JSON.parse(JSON.stringify(state)); ns.menuOrders.push(order); updateState(ns);
+    ns.menuOrders.push(order); updateState(ns);
     showMenuOrderMsg(`<h3 class="text-xl font-bold text-green-700 mb-1">¡Pedido confirmado! (${order.shortId})</h3>
       <p class="text-gray-700">Total a pagar: <span class="font-bold font-mono">${fmtCur(order.total)}</span></p>
-      <p class="text-sm text-gray-500 mt-1">Gracias${order.clientName?(', '+order.clientName):''}. Tu pedido fue registrado.</p>`, true);
-    // reiniciar formulario
-    menuDraft = { count:1, pedidos:[{dishId:'',adicionales:[]}] };
-    const cn=document.getElementById('menu-order-client-name'); if(cn) cn.value='';
-    const cp=document.getElementById('menu-order-client-phone'); if(cp) cp.value='';
+      <p class="text-sm text-gray-500 mt-1">Gracias, ${name}. Tu pedido fue registrado${nuevoCliente?' y fuiste guardado como nuevo cliente':''}.</p>`, true);
+    menuDraft = { count:1, pedidos:[{itemId:'',adicionales:[]}] };
+    ['menu-order-email','menu-order-name','menu-order-lastname','menu-order-whatsapp','menu-order-address'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     const cc=document.getElementById('menu-order-count'); if(cc) cc.value='1';
+    const st=document.getElementById('menu-order-client-status'); if(st) st.textContent='';
     renderPedidoBlocks(); updateMenuOrderTotal();
   };
 
@@ -2336,59 +2413,42 @@ async function startApp() {
     const on = (id,ev,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener(ev,fn); };
     on('menu-tab-admin','click',()=>switchMenuTab('admin'));
     on('menu-tab-order','click',()=>switchMenuTab('order'));
-    on('menu-add-dish-btn','click',()=>{
-      const sel=document.getElementById('menu-add-dish-selector'), priceEl=document.getElementById('menu-add-price');
-      const dishId=sel.value; if(!dishId) return;
-      if (state.menu.some(m=>m.dishId===dishId)) return;
-      const ns=JSON.parse(JSON.stringify(state)); ns.menu.push({ dishId, price: parseFloat(priceEl.value)||0 }); updateState(ns);
-      priceEl.value='';
+    // checklists de construcción (agrupadas por tipo)
+    on('menu-item-dish-checklist','change',e=>{ if(e.target.classList.contains('menu-item-dish-check')){ const id=e.target.dataset.dishid, i=menuBuilder.dishIds.indexOf(id); if(e.target.checked&&i<0)menuBuilder.dishIds.push(id); else if(!e.target.checked&&i>=0)menuBuilder.dishIds.splice(i,1); } });
+    on('adicional-item-dish-checklist','change',e=>{ if(e.target.classList.contains('adic-item-dish-check')){ const id=e.target.dataset.dishid, i=adicBuilder.dishIds.indexOf(id); if(e.target.checked&&i<0)adicBuilder.dishIds.push(id); else if(!e.target.checked&&i>=0)adicBuilder.dishIds.splice(i,1); } });
+    // añadir ítem del menú (compuesto de varios platos)
+    on('menu-item-add-btn','click',()=>{
+      const nameEl=document.getElementById('menu-item-name'), priceEl=document.getElementById('menu-item-price');
+      const name=(nameEl.value||'').trim();
+      if(!name){ nameEl.focus(); return; }
+      if(!menuBuilder.dishIds.length){ showMenuOrderMsg('<p class="text-red-700 font-semibold">Selecciona al menos un plato para el ítem.</p>', false); switchMenuTab('admin'); return; }
+      const ns=JSON.parse(JSON.stringify(state)); ns.menu.push({ id:`menu-${Date.now()}`, name, dishIds:[...menuBuilder.dishIds], price:parseFloat(priceEl.value)||0 }); updateState(ns);
+      nameEl.value=''; priceEl.value=''; menuBuilder.dishIds=[];
+      renderDishChecklistGrouped('menu-item-dish-checklist', menuBuilder.dishIds, 'menu-item-dish-check');
     });
-    on('menu-main-list','change',e=>{
-      if (e.target.classList.contains('menu-price-input')) {
-        const id=e.target.dataset.dishid; const ns=JSON.parse(JSON.stringify(state));
-        const m=ns.menu.find(x=>x.dishId===id); if (m){ m.price=parseFloat(e.target.value)||0; updateState(ns); }
-      }
+    on('menu-main-list','change',e=>{ if(e.target.classList.contains('menu-price-input')){ const id=e.target.dataset.itemid, ns=JSON.parse(JSON.stringify(state)); const m=ns.menu.find(x=>x.id===id); if(m){ m.price=parseFloat(e.target.value)||0; updateState(ns);} } });
+    on('menu-main-list','click',e=>{ if(e.target.classList.contains('menu-remove-btn')){ const id=e.target.dataset.itemid, ns=JSON.parse(JSON.stringify(state)); ns.menu=ns.menu.filter(x=>x.id!==id); updateState(ns);} });
+    // añadir adicional (seleccionado del listado de platos agrupado)
+    on('adicional-item-add-btn','click',()=>{
+      const nameEl=document.getElementById('adicional-item-name'), priceEl=document.getElementById('adicional-item-price');
+      const name=(nameEl.value||'').trim();
+      if(!name){ nameEl.focus(); return; }
+      const ns=JSON.parse(JSON.stringify(state)); ns.adicionales.push({ id:`adic-${Date.now()}`, name, dishIds:[...adicBuilder.dishIds], price:parseFloat(priceEl.value)||0 }); updateState(ns);
+      nameEl.value=''; priceEl.value=''; adicBuilder.dishIds=[];
+      renderDishChecklistGrouped('adicional-item-dish-checklist', adicBuilder.dishIds, 'adic-item-dish-check');
     });
-    on('menu-main-list','click',e=>{
-      if (e.target.classList.contains('menu-remove-btn')) {
-        const id=e.target.dataset.dishid; const ns=JSON.parse(JSON.stringify(state));
-        ns.menu=ns.menu.filter(x=>x.dishId!==id); updateState(ns);
-      }
-    });
-    on('adicional-add-btn','click',()=>{
-      const nameEl=document.getElementById('adicional-add-name'), priceEl=document.getElementById('adicional-add-price');
-      const name=(nameEl.value||'').trim(); if(!name) return;
-      const ns=JSON.parse(JSON.stringify(state)); ns.adicionales.push({ id:`adic-${Date.now()}`, name, price:parseFloat(priceEl.value)||0 }); updateState(ns);
-      nameEl.value=''; priceEl.value='';
-    });
-    on('adicionales-list','change',e=>{
-      const id=e.target.dataset.adicid; if(!id) return;
-      const ns=JSON.parse(JSON.stringify(state)); const a=ns.adicionales.find(x=>x.id===id); if(!a) return;
-      if (e.target.classList.contains('adic-name-input')) a.name=(e.target.value||'').trim();
-      else if (e.target.classList.contains('adic-price-input')) a.price=parseFloat(e.target.value)||0;
-      updateState(ns);
-    });
-    on('adicionales-list','click',e=>{
-      if (e.target.classList.contains('adic-remove-btn')) {
-        const id=e.target.dataset.adicid; const ns=JSON.parse(JSON.stringify(state));
-        ns.adicionales=ns.adicionales.filter(x=>x.id!==id); updateState(ns);
-      }
-    });
+    on('adicionales-list','change',e=>{ const id=e.target.dataset.adicid; if(!id) return; const ns=JSON.parse(JSON.stringify(state)); const a=ns.adicionales.find(x=>x.id===id); if(!a) return; if(e.target.classList.contains('adic-name-input')) a.name=(e.target.value||'').trim(); else if(e.target.classList.contains('adic-price-input')) a.price=parseFloat(e.target.value)||0; updateState(ns); });
+    on('adicionales-list','click',e=>{ if(e.target.classList.contains('adic-remove-btn')){ const id=e.target.dataset.adicid, ns=JSON.parse(JSON.stringify(state)); ns.adicionales=ns.adicionales.filter(x=>x.id!==id); updateState(ns);} });
+    // formulario de pedido
+    on('menu-order-email','change',applyClientAutofill);
+    on('menu-order-email','blur',applyClientAutofill);
     on('menu-order-count','change',e=>{ menuDraft.count=e.target.value; syncDraft(); e.target.value=menuDraft.count; renderPedidoBlocks(); updateMenuOrderTotal(); });
     on('menu-order-pedidos','change',e=>{
       const t=e.target;
-      if (t.classList.contains('menu-plato-select')) {
-        const i=+t.dataset.pedido; if (menuDraft.pedidos[i]) menuDraft.pedidos[i].dishId=t.value;
-        renderPedidoBlocks(); updateMenuOrderTotal();
-      } else if (t.classList.contains('menu-adic-check')) {
-        const i=+t.dataset.pedido, aid=t.dataset.adicid, adic=state.adicionales.find(a=>a.id===aid);
-        if (menuDraft.pedidos[i] && adic) {
-          const arr=menuDraft.pedidos[i].adicionales, idx=arr.findIndex(x=>x.id===aid);
-          if (t.checked && idx<0) arr.push({ id:adic.id, name:adic.name, price:adic.price });
-          else if (!t.checked && idx>=0) arr.splice(idx,1);
-        }
-        renderPedidoBlocks(); updateMenuOrderTotal();
-      }
+      if (t.classList.contains('menu-plato-select')) { const i=+t.dataset.pedido; if (menuDraft.pedidos[i]) menuDraft.pedidos[i].itemId=t.value; renderPedidoBlocks(); updateMenuOrderTotal(); }
+      else if (t.classList.contains('menu-adic-check')) { const i=+t.dataset.pedido, aid=t.dataset.adicid, adic=state.adicionales.find(a=>a.id===aid);
+        if (menuDraft.pedidos[i] && adic) { const arr=menuDraft.pedidos[i].adicionales, idx=arr.findIndex(x=>x.id===aid); if (t.checked&&idx<0) arr.push({id:adic.id,name:adic.name,price:adic.price}); else if (!t.checked&&idx>=0) arr.splice(idx,1); }
+        renderPedidoBlocks(); updateMenuOrderTotal(); }
     });
     on('menu-order-confirm-btn','click',handleConfirmMenuOrder);
   };
