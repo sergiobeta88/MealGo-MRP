@@ -1479,13 +1479,13 @@ async function startApp() {
   const populatePurchaseDishSelector = () => {
     const sel=document.getElementById('purchase-dish-selector');
     sel.innerHTML='<option value="">Selecciona un plato…</option>';
-    const all=state.dishes.map(d=>({...d,cost:calculateDishCost(d)})).sort((a,b)=>a.name.localeCompare(b.name));
-    const finals=all.filter(d=>d.dishType!=='preparation');
-    const preps=all.filter(d=>d.dishType==='preparation');
-    if(finals.length){ const g=document.createElement('optgroup'); g.label='Platos Finales';
-      finals.forEach(d=>{ const o=document.createElement('option'); o.value=d.id; o.textContent=`${d.name} (${fmtCur(d.cost)})`; g.appendChild(o); }); sel.appendChild(g); }
-    if(preps.length){ const g=document.createElement('optgroup'); g.label='Preparaciones / Acompañantes';
-      preps.forEach(d=>{ const o=document.createElement('option'); o.value=d.id; o.textContent=`${d.name} (${fmtCur(d.cost)})`; g.appendChild(o); }); sel.appendChild(g); }
+    DISH_GROUPS.forEach(([key,label])=>{
+      const arr=state.dishes.filter(d=>dishTypeGroup(d.dishType)===key).map(d=>({...d,cost:calculateDishCost(d)})).sort((a,b)=>a.name.localeCompare(b.name));
+      if(!arr.length) return;
+      const g=document.createElement('optgroup'); g.label=label;
+      arr.forEach(d=>{ const o=document.createElement('option'); o.value=d.id; o.textContent=`${d.name} (${fmtCur(d.cost)})`; g.appendChild(o); });
+      sel.appendChild(g);
+    });
   };
   const populateClientSelector = (id='order-client-selector') => {
     const sel=document.getElementById(id); sel.innerHTML='<option value="">Ninguno</option>';
@@ -2251,10 +2251,14 @@ async function startApp() {
         const adic=state.adicionales.find(a=>a.dishId===d.id);
         const checked=adic?'checked':'';
         const price=adic?adic.price:'';
-        return `<div class="flex items-center gap-2 py-1 flex-wrap border-b border-gray-50">
-          <label class="flex items-center gap-2 text-sm cursor-pointer flex-grow min-w-[150px]"><input type="checkbox" class="adic-check accent-orange-500" data-dishid="${d.id}" ${checked}><span>${d.name}</span></label>
+        const noPrice=adic && !adic.price;   // marcado como disponible pero sin precio de venta
+        const rowCls=noPrice ? 'flex items-center gap-2 py-1 flex-wrap border-b border-red-200 bg-red-50 rounded' : 'flex items-center gap-2 py-1 flex-wrap border-b border-gray-50';
+        const nameCls=noPrice ? 'text-red-600 font-semibold' : '';
+        const priceCls=noPrice ? 'adic-price w-24 border-red-500 ring-1 ring-red-400 bg-red-50 rounded-md shadow-sm text-right font-mono text-sm' : 'adic-price w-24 border-gray-300 rounded-md shadow-sm text-right font-mono text-sm';
+        return `<div class="${rowCls}">
+          <label class="flex items-center gap-2 text-sm cursor-pointer flex-grow min-w-[150px]"><input type="checkbox" class="adic-check accent-orange-500" data-dishid="${d.id}" ${checked}><span class="${nameCls}">${d.name}${noPrice?' — sin precio':''}</span></label>
           <span class="text-xs text-gray-500 whitespace-nowrap">Costo: ${fmtCur(calculateDishCost(d))}</span>
-          <div class="flex items-center gap-1"><span class="text-sm text-gray-500">Venta $</span><input type="number" min="0" step="50" value="${price}" placeholder="0" data-dishid="${d.id}" class="adic-price w-24 border-gray-300 rounded-md shadow-sm text-right font-mono text-sm"></div>
+          <div class="flex items-center gap-1"><span class="text-sm text-gray-500">Venta $</span><input type="number" min="0" step="50" value="${price}" placeholder="0" data-dishid="${d.id}" class="${priceCls}"></div>
         </div>`;
       }).join('')}</div>` : '';
     cont.innerHTML = DISH_GROUPS.map(([key,label])=>group(label, state.dishes.filter(d=>dishTypeGroup(d.dishType)===key).sort((a,b)=>a.name.localeCompare(b.name)))).join('');
@@ -2280,17 +2284,24 @@ async function startApp() {
     const orders=[...state.menuOrders].reverse();
     if(!orders.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no se han recibido pedidos.</p>'; return; }
     cont.innerHTML = orders.map(o=>{
-      const det=o.pedidos.map((p,idx)=>{ const adis=p.adicionales&&p.adicionales.length?' + '+p.adicionales.map(a=>a.name).join(', '):''; return `<li class="text-sm text-gray-600">Pedido ${idx+1}: <span class="font-medium">${p.itemName||p.dishName||'(plato)'}</span>${adis} — ${fmtCur(p.subtotal)}</li>`; }).join('');
+      const det=o.pedidos.map((p,idx)=>{
+        const itemName=p.itemName||p.dishName||'(plato)';
+        const itemPrice=(p.itemPrice!=null?p.itemPrice:(p.dishPrice!=null?p.dishPrice:0));
+        const lines=[`<div class="flex justify-between"><span class="font-medium text-gray-800">${itemName}</span><span class="font-mono">${fmtCur(itemPrice)}</span></div>`];
+        (p.adicionales||[]).forEach(a=>lines.push(`<div class="flex justify-between text-gray-500 pl-3"><span>+ ${a.name}</span><span class="font-mono">${fmtCur(a.price)}</span></div>`));
+        lines.push(`<div class="flex justify-between border-t border-gray-100 mt-0.5 pt-0.5"><span class="text-gray-500">Subtotal pedido ${idx+1}</span><span class="font-mono font-semibold">${fmtCur(p.subtotal)}</span></div>`);
+        return `<div class="text-sm mb-2">${lines.join('')}</div>`;
+      }).join('');
       const contact=[o.clientEmail,o.clientPhone,o.clientAddress].filter(Boolean).join(' · ');
       return `<div class="p-3 border rounded-lg bg-white">
         <div class="flex justify-between items-start flex-wrap gap-2">
           <div><span class="font-bold text-gray-800">${o.clientName||'Cliente sin nombre'}</span>
             <span class="text-xs text-gray-400 ml-2">${o.shortId} · ${o.date}</span>
             ${contact?`<p class="text-xs text-gray-500">${contact}</p>`:''}</div>
-          <div class="flex items-center gap-3"><span class="font-bold text-orange-500 font-mono">${fmtCur(o.total)}</span>
-            <button type="button" data-orderid="${o.id}" class="menu-order-delete-btn text-red-500 font-bold px-1" title="Eliminar pedido">✕</button></div>
+          <button type="button" data-orderid="${o.id}" class="menu-order-delete-btn text-red-500 font-bold px-1" title="Eliminar pedido">✕</button>
         </div>
-        <ul class="mt-2 space-y-0.5 pl-1">${det}</ul>
+        <div class="mt-2">${det}</div>
+        <div class="flex justify-between border-t pt-1 mt-1 font-bold"><span class="text-gray-800">Valor a pagar total</span><span class="text-orange-500 font-mono">${fmtCur(o.total)}</span></div>
       </div>`;
     }).join('');
   };
