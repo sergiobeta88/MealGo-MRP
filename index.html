@@ -233,7 +233,7 @@
   </header>
 
   <!-- Controles de Datos -->
-  <div class="card mb-6">
+  <div id="data-management-card" class="card mb-6">
     <h2 class="text-xl font-semibold text-gray-700 mb-4">Gestión de Datos</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
       <button id="export-data-btn" class="w-full py-2 px-4 rounded-lg font-semibold btn-secondary">
@@ -627,29 +627,35 @@
       <div id="menu-order-view" class="hidden space-y-6">
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-1">Haz tu Pedido</h2>
-          <p class="text-sm text-gray-500 mb-4">Ingresa tu correo: si ya eres cliente traeremos tus datos; si eres nuevo, complétalos.</p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label class="block text-sm font-medium text-gray-700">Correo electrónico *</label>
-              <input type="email" id="menu-order-email" placeholder="tucorreo@ejemplo.com" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
-            <div class="flex items-end">
-              <p id="menu-order-client-status" class="text-sm font-medium"></p>
+          <p class="text-sm text-gray-500 mb-4">Cuéntanos si es tu primer pedido o si ya eres cliente.</p>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">¿Eres cliente nuevo?</label>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" id="menu-kind-new" class="py-2 px-5 rounded-lg font-semibold btn-secondary">Sí, soy nuevo</button>
+              <button type="button" id="menu-kind-existing" class="py-2 px-5 rounded-lg font-semibold btn-secondary">Ya soy cliente</button>
             </div>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <div><label class="block text-sm font-medium text-gray-700">Nombre</label>
-              <input type="text" id="menu-order-name" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
-            <div><label class="block text-sm font-medium text-gray-700">Apellido</label>
-              <input type="text" id="menu-order-lastname" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
-            <div><label class="block text-sm font-medium text-gray-700">WhatsApp</label>
-              <input type="tel" id="menu-order-whatsapp" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
-            <div><label class="block text-sm font-medium text-gray-700">Dirección de entrega</label>
-              <input type="text" id="menu-order-address" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+          <div id="menu-order-fields" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label class="block text-sm font-medium text-gray-700">Correo electrónico *</label>
+                <input type="email" id="menu-order-email" placeholder="tucorreo@ejemplo.com" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+              <div><label class="block text-sm font-medium text-gray-700">Nombre *</label>
+                <input type="text" id="menu-order-name" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            </div>
+            <div id="menu-order-extra-fields" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+              <div><label class="block text-sm font-medium text-gray-700">Apellido *</label>
+                <input type="text" id="menu-order-lastname" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+              <div><label class="block text-sm font-medium text-gray-700">WhatsApp *</label>
+                <input type="tel" id="menu-order-whatsapp" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+              <div><label class="block text-sm font-medium text-gray-700">Dirección de entrega *</label>
+                <input type="text" id="menu-order-address" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            </div>
+            <div class="mt-4 max-w-xs">
+              <label class="block text-sm font-medium text-gray-700">¿Cuántos pedidos deseas?</label>
+              <input type="number" id="menu-order-count" min="1" value="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+            </div>
+            <div id="menu-order-pedidos" class="space-y-4 mt-4"></div>
           </div>
-          <div class="mt-4 max-w-xs">
-            <label class="block text-sm font-medium text-gray-700">¿Cuántos pedidos deseas?</label>
-            <input type="number" id="menu-order-count" min="1" value="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
-          </div>
-          <div id="menu-order-pedidos" class="space-y-4 mt-4"></div>
         </div>
         <div class="card flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
@@ -869,7 +875,7 @@ async function startApp() {
   // Snapshot del menú que SÍ puede ver el cliente (solo nombres y precios de venta)
   const buildPublicMenu = () => ({
     menu: (state.menu||[]).map(m=>({ id:m.id, name:m.name, price:m.price||0 })),
-    adicionales: (state.adicionales||[]).map(a=>({ dishId:a.dishId, name:adicName(a.dishId), price:a.price||0 })),
+    adicionales: availableAdicionales().map(a=>({ dishId:a.dishId, name:adicName(a.dishId), price:a.price||0 })),
     ts: Date.now(),
   });
   const publishPublicMenu = () => { if (!CLIENT_MODE && window._fbPublishMenu) window._fbPublishMenu(buildPublicMenu()); };
@@ -2300,6 +2306,8 @@ async function startApp() {
   const dishCostById = id => { const d=state.dishes.find(x=>x.id===id); return d?calculateDishCost(d):0; };
   const itemCost = m => (m.dishIds||[]).reduce((t,id)=>t+dishCostById(id),0);
   const adicName = dishId => { const d=state.dishes.find(x=>x.id===dishId); return d?d.name:'(plato eliminado)'; };
+  const availableAdicionales = () => (state.adicionales||[]).filter(a=>a.available!==false);
+  const adicDisplayName = a => a.name || adicName(a.dishId);
 
   const renderMenuModule = () => {
     renderDishChecklistGrouped('menu-item-dish-checklist', menuBuilder.dishIds, 'menu-item-dish-check');
@@ -2333,9 +2341,10 @@ async function startApp() {
     if(!state.dishes.length){ cont.innerHTML='<p class="text-xs text-gray-400 italic">No hay platos creados.</p>'; return; }
     const group=(title,arr)=> arr.length ? `<div class="mb-2"><p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">${title}</p>${arr.map(d=>{
         const adic=state.adicionales.find(a=>a.dishId===d.id);
-        const checked=adic?'checked':'';
-        const price=adic?adic.price:'';
-        const noPrice=adic && !adic.price;   // marcado como disponible pero sin precio de venta
+        const isAvail=adic && adic.available!==false;
+        const checked=isAvail?'checked':'';
+        const price=adic?adic.price:'';   // se conserva aunque esté desmarcado
+        const noPrice=isAvail && !adic.price;   // disponible pero sin precio de venta
         const rowCls=noPrice ? 'flex items-center gap-2 py-1 flex-wrap border-b border-red-200 bg-red-50 rounded' : 'flex items-center gap-2 py-1 flex-wrap border-b border-gray-50';
         const nameCls=noPrice ? 'text-red-600 font-semibold' : '';
         const priceCls=noPrice ? 'adic-price w-24 border-red-500 ring-1 ring-red-400 bg-red-50 rounded-md shadow-sm text-right font-mono text-sm' : 'adic-price w-24 border-gray-300 rounded-md shadow-sm text-right font-mono text-sm';
@@ -2417,7 +2426,7 @@ async function startApp() {
         if (imported.clientEmail) {
           const idx = ns.clients.findIndex(c=>(c.email||'').trim().toLowerCase()===imported.clientEmail.trim().toLowerCase());
           const cdata = { name:imported.clientFirstName||'', lastname:imported.clientLastName||'', contact:imported.clientPhone||'', whatsapp:imported.clientPhone||'', email:imported.clientEmail, address:imported.clientAddress||'' };
-          if (idx>-1) ns.clients[idx]={...ns.clients[idx], ...cdata};
+          if (idx>-1) ns.clients[idx]=mergeClientData(ns.clients[idx], cdata);
           else ns.clients.push({ id:`client-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, status:'activo', ...cdata });
         }
         ns.menuOrders.push(imported);
@@ -2429,7 +2438,7 @@ async function startApp() {
   // En modo cliente: ocultar todo menos el formulario de pedido
   const applyClientModeUI = () => {
     const nav=document.querySelector('nav'); if(nav) nav.classList.add('hidden');
-    document.getElementById('undo-btn')?.classList.add('hidden');
+    document.getElementById('data-management-card')?.classList.add('hidden');
     document.getElementById('firebase-status')?.classList.add('hidden');
     Object.values(sections).forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.add('hidden'); });
     document.getElementById('menu-section')?.classList.remove('hidden');
@@ -2437,6 +2446,9 @@ async function startApp() {
     document.getElementById('menu-tab-order')?.classList.add('hidden');
     document.getElementById('menu-admin-view')?.classList.add('hidden');
     document.getElementById('menu-order-view')?.classList.remove('hidden');
+    // Logo más grande y subtítulo enfocado al cliente
+    const hdrImg=document.querySelector('.app-header .brand img'); if(hdrImg) hdrImg.style.height='170px';
+    const sub=document.querySelector('.app-header .subtitle'); if(sub) sub.textContent='Haz tu pedido';
   };
 
   // ---- Formulario de pedido (cliente): SOLO precios de venta ----
@@ -2457,8 +2469,8 @@ async function startApp() {
     menuDraft.pedidos.forEach(p=>{
       if (p.itemId && !state.menu.some(m=>m.id===p.itemId)) p.itemId='';
       p.adicionales = (p.adicionales||[])
-        .filter(a=>state.adicionales.some(s=>s.dishId===a.dishId))
-        .map(a=>{ const s=state.adicionales.find(x=>x.dishId===a.dishId); return { dishId:s.dishId, name:adicName(s.dishId), price:s.price }; });
+        .filter(a=>availableAdicionales().some(s=>s.dishId===a.dishId))
+        .map(a=>{ const s=availableAdicionales().find(x=>x.dishId===a.dishId); return { dishId:s.dishId, name:adicDisplayName(s), price:s.price }; });
     });
   };
 
@@ -2472,8 +2484,9 @@ async function startApp() {
     syncDraft();
     cont.innerHTML = menuDraft.pedidos.map((p,i)=>{
       const opts = `<option value="">— Selecciona un plato —</option>` + state.menu.map(m=>`<option value="${m.id}" ${p.itemId===m.id?'selected':''}>${m.name} — ${fmtCur(m.price)}</option>`).join('');
-      const adics = state.adicionales.length
-        ? state.adicionales.map(a=>{ const checked=p.adicionales.some(x=>x.dishId===a.dishId)?'checked':''; return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" data-pedido="${i}" data-dishid="${a.dishId}" class="menu-adic-check accent-orange-500" ${checked}><span>${adicName(a.dishId)} <span class="text-gray-400">(${fmtCur(a.price)})</span></span></label>`; }).join('')
+      const adx = availableAdicionales();
+      const adics = adx.length
+        ? adx.map(a=>{ const checked=p.adicionales.some(x=>x.dishId===a.dishId)?'checked':''; return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" data-pedido="${i}" data-dishid="${a.dishId}" class="menu-adic-check accent-orange-500" ${checked}><span>${adicDisplayName(a)} <span class="text-gray-400">(${fmtCur(a.price)})</span></span></label>`; }).join('')
         : '<p class="text-xs text-gray-400 italic">No hay adicionales disponibles.</p>';
       const sub = pedidoSubtotal(p);
       return `<div class="p-4 border rounded-lg bg-gray-50">
@@ -2512,32 +2525,43 @@ async function startApp() {
     const e=(email||'').trim().toLowerCase(); if(!e) return null;
     return state.clients.find(c=>(c.email||'').trim().toLowerCase()===e) || null;
   };
-  const applyClientAutofill = () => {
-    const emailEl=document.getElementById('menu-order-email'); if(!emailEl) return;
-    const email=emailEl.value;
-    const status=document.getElementById('menu-order-client-status');
-    const nEl=document.getElementById('menu-order-name'), lEl=document.getElementById('menu-order-lastname'),
-          wEl=document.getElementById('menu-order-whatsapp'), aEl=document.getElementById('menu-order-address');
-    const c=lookupClientByEmail(email);
-    if(c){
-      nEl.value=c.name||''; lEl.value=c.lastname||''; wEl.value=c.whatsapp||c.contact||''; aEl.value=c.address||'';
-      if(status){ status.textContent='✅ Cliente registrado: datos cargados.'; status.className='text-sm font-medium text-green-600'; }
-    } else if((email||'').trim()){
-      if(status){ status.textContent='🆕 Cliente nuevo: completa tus datos.'; status.className='text-sm font-medium text-blue-600'; }
-    } else if(status){ status.textContent=''; }
+
+  let menuClientKind = null; // 'nuevo' | 'existente'
+  const setMenuClientKind = kind => {
+    menuClientKind = kind;
+    const fields=document.getElementById('menu-order-fields');
+    const extra=document.getElementById('menu-order-extra-fields');
+    const bn=document.getElementById('menu-kind-new'), be=document.getElementById('menu-kind-existing');
+    if(fields) fields.classList.remove('hidden');
+    if(kind==='existente'){ extra?.classList.add('hidden'); } else { extra?.classList.remove('hidden'); }
+    // resaltar el botón elegido
+    if(bn&&be){
+      const on='btn-primary', off='btn-secondary';
+      bn.classList.toggle(on, kind==='nuevo'); bn.classList.toggle(off, kind!=='nuevo');
+      be.classList.toggle(on, kind==='existente'); be.classList.toggle(off, kind!=='existente');
+    }
+    if(!document.getElementById('menu-order-pedidos').innerHTML){ renderPedidoBlocks(); updateMenuOrderTotal(); }
   };
 
   const handleConfirmMenuOrder = async () => {
     if (!state.menu.length) { showMenuOrderMsg('<p class="text-red-700 font-semibold">El menú no tiene ítems disponibles.</p>', false); return; }
+    if (!menuClientKind) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Indica si eres cliente nuevo o si ya eres cliente.</p>', false); return; }
     const email=(document.getElementById('menu-order-email').value||'').trim();
     const name=(document.getElementById('menu-order-name').value||'').trim();
     const lastname=(document.getElementById('menu-order-lastname').value||'').trim();
     const whatsapp=(document.getElementById('menu-order-whatsapp').value||'').trim();
     const address=(document.getElementById('menu-order-address').value||'').trim();
-    // Todos los datos personales son obligatorios
-    if (!email || !name || !lastname || !whatsapp || !address) {
-      showMenuOrderMsg('<p class="text-red-700 font-semibold">Completa todos tus datos: correo, nombre, apellido, WhatsApp y dirección de entrega.</p>', false);
-      return;
+    // Cliente nuevo: todos los datos. Cliente existente: solo nombre y correo.
+    if (menuClientKind==='nuevo') {
+      if (!email || !name || !lastname || !whatsapp || !address) {
+        showMenuOrderMsg('<p class="text-red-700 font-semibold">Completa todos tus datos: correo, nombre, apellido, WhatsApp y dirección de entrega.</p>', false);
+        return;
+      }
+    } else {
+      if (!email || !name) {
+        showMenuOrderMsg('<p class="text-red-700 font-semibold">Ingresa tu nombre y tu correo electrónico.</p>', false);
+        return;
+      }
     }
     syncDraft();
     if (menuDraft.pedidos.some(p=>!p.itemId)) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Selecciona el plato principal en todos los pedidos.</p>', false); return; }
@@ -2545,8 +2569,7 @@ async function startApp() {
     const pedidos = menuDraft.pedidos.map(p=>{
       const m=state.menu.find(x=>x.id===p.itemId);
       return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:m?(m.price||0):0,
-        adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };
-    });
+        adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };    });
     const baseOrder = { shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
       clientName:`${name} ${lastname}`.trim(), clientFirstName:name, clientLastName:lastname,
       clientEmail:email, clientPhone:whatsapp, clientAddress:address, pedidos, total };
@@ -2570,12 +2593,19 @@ async function startApp() {
       ns.clients.push(client);
     } else {
       const idx = ns.clients.findIndex(c=>c.id===client.id);
-      if (idx>-1) { ns.clients[idx] = { ...ns.clients[idx], name, lastname, whatsapp, contact:whatsapp, address }; client = ns.clients[idx]; }
+      if (idx>-1) { ns.clients[idx] = mergeClientData(ns.clients[idx], {name, lastname, whatsapp, contact:whatsapp, address}); client = ns.clients[idx]; }
     }
     const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id };
     ns.menuOrders.push(order); updateState(ns);
     showOrderConfirmed(order, name);
     resetOrderForm();
+  };
+
+  // Solo sobrescribe con los datos entrantes que NO estén vacíos (no borra lo ya registrado)
+  const mergeClientData = (existing, incoming) => {
+    const out = { ...existing };
+    Object.keys(incoming).forEach(k=>{ const v=incoming[k]; if (v!==undefined && v!==null && String(v).trim()!=='') out[k]=v; });
+    return out;
   };
 
   const showOrderConfirmed = (order, name) => {
@@ -2591,7 +2621,9 @@ async function startApp() {
     menuDraft = { count:1, pedidos:[{itemId:'',adicionales:[]}] };
     ['menu-order-email','menu-order-name','menu-order-lastname','menu-order-whatsapp','menu-order-address'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     const cc=document.getElementById('menu-order-count'); if(cc) cc.value='1';
-    const st=document.getElementById('menu-order-client-status'); if(st) st.textContent='';
+    menuClientKind=null;
+    document.getElementById('menu-order-fields')?.classList.add('hidden');
+    ['menu-kind-new','menu-kind-existing'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.classList.add('btn-secondary'); b.classList.remove('btn-primary'); } });
     renderPedidoBlocks(); updateMenuOrderTotal();
   };
 
@@ -2617,25 +2649,32 @@ async function startApp() {
       const t=e.target, id=t.dataset.dishid; if(!id) return;
       const ns=JSON.parse(JSON.stringify(state));
       if(t.classList.contains('adic-check')){
-        if(t.checked){ if(!ns.adicionales.some(a=>a.dishId===id)){ const priceEl=document.querySelector(`.adic-price[data-dishid="${id}"]`); const price=priceEl?(parseFloat(priceEl.value)||0):0; ns.adicionales.push({dishId:id, price}); } }
-        else { ns.adicionales=ns.adicionales.filter(a=>a.dishId!==id); }
+        let a=ns.adicionales.find(x=>x.dishId===id);
+        if(t.checked){
+          if(a){ a.available=true; }
+          else { const priceEl=document.querySelector(`.adic-price[data-dishid="${id}"]`); const price=priceEl?(parseFloat(priceEl.value)||0):0; ns.adicionales.push({dishId:id, price, available:true}); }
+        } else {
+          if(a){ a.available=false; }   // se conserva el precio para cuando se vuelva a marcar
+        }
         updateState(ns);
       } else if(t.classList.contains('adic-price')){
-        const a=ns.adicionales.find(x=>x.dishId===id);
-        if(a){ a.price=parseFloat(t.value)||0; updateState(ns); }
+        let a=ns.adicionales.find(x=>x.dishId===id);
+        if(!a){ a={dishId:id, price:0, available:false}; ns.adicionales.push(a); }
+        a.price=parseFloat(t.value)||0;
+        updateState(ns);
       }
     });
     // pedidos recibidos: eliminar
     on('menu-orders-received','click',e=>{ if(e.target.classList.contains('menu-order-delete-btn')){ handleDeleteMenuOrder(e.target.dataset.orderid); } });
-    // formulario de pedido
-    on('menu-order-email','change',applyClientAutofill);
-    on('menu-order-email','blur',applyClientAutofill);
+    // formulario de pedido: tipo de cliente
+    on('menu-kind-new','click',()=>setMenuClientKind('nuevo'));
+    on('menu-kind-existing','click',()=>setMenuClientKind('existente'));
     on('menu-order-count','change',e=>{ menuDraft.count=e.target.value; syncDraft(); e.target.value=menuDraft.count; renderPedidoBlocks(); updateMenuOrderTotal(); });
     on('menu-order-pedidos','change',e=>{
       const t=e.target;
       if (t.classList.contains('menu-plato-select')) { const i=+t.dataset.pedido; if (menuDraft.pedidos[i]) menuDraft.pedidos[i].itemId=t.value; renderPedidoBlocks(); updateMenuOrderTotal(); }
-      else if (t.classList.contains('menu-adic-check')) { const i=+t.dataset.pedido, did=t.dataset.dishid, adic=state.adicionales.find(a=>a.dishId===did);
-        if (menuDraft.pedidos[i] && adic) { const arr=menuDraft.pedidos[i].adicionales, idx=arr.findIndex(x=>x.dishId===did); if (t.checked&&idx<0) arr.push({dishId:adic.dishId,name:adicName(adic.dishId),price:adic.price}); else if (!t.checked&&idx>=0) arr.splice(idx,1); }
+      else if (t.classList.contains('menu-adic-check')) { const i=+t.dataset.pedido, did=t.dataset.dishid, adic=availableAdicionales().find(a=>a.dishId===did);
+        if (menuDraft.pedidos[i] && adic) { const arr=menuDraft.pedidos[i].adicionales, idx=arr.findIndex(x=>x.dishId===did); if (t.checked&&idx<0) arr.push({dishId:adic.dishId,name:adicDisplayName(adic),price:adic.price}); else if (!t.checked&&idx>=0) arr.splice(idx,1); }
         renderPedidoBlocks(); updateMenuOrderTotal(); }
     });
     on('menu-order-confirm-btn','click',handleConfirmMenuOrder);
