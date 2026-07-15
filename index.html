@@ -2448,6 +2448,7 @@ async function startApp() {
     const ord = ns.menuOrders.find(o=>o.id===id);
     if (ord && ord.publicId && window._fbDeleteOrder) window._fbDeleteOrder(ord.publicId);
     ns.menuOrders=ns.menuOrders.filter(o=>o.id!==id);
+    ns.customerOrders=ns.customerOrders.filter(o=>o.menuOrderId!==id); // quita también el registro en Compras
     updateState(ns);
   };
 
@@ -2466,10 +2467,11 @@ async function startApp() {
         if (imported.clientEmail) {
           const idx = ns.clients.findIndex(c=>(c.email||'').trim().toLowerCase()===imported.clientEmail.trim().toLowerCase());
           const cdata = { name:imported.clientFirstName||'', lastname:imported.clientLastName||'', contact:imported.clientPhone||'', whatsapp:imported.clientPhone||'', email:imported.clientEmail, address:imported.clientAddress||'' };
-          if (idx>-1) ns.clients[idx]=mergeClientData(ns.clients[idx], cdata);
-          else ns.clients.push({ id:`client-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, status:'activo', ...cdata });
+          if (idx>-1) { ns.clients[idx]=mergeClientData(ns.clients[idx], cdata); imported.clientId=ns.clients[idx].id; }
+          else { const nc={ id:`client-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, status:'activo', ...cdata }; ns.clients.push(nc); imported.clientId=nc.id; }
         }
         ns.menuOrders.push(imported);
+        appendPurchaseFromMenuOrder(ns, imported);   // crea el pedido en el módulo de Compras
       });
       updateState(ns);
     });
@@ -2609,6 +2611,7 @@ async function startApp() {
     const pedidos = menuDraft.pedidos.map(p=>{
       const m=state.menu.find(x=>x.id===p.itemId);
       return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:m?(m.price||0):0,
+        itemDishIds: m && Array.isArray(m.dishIds) ? [...m.dishIds] : [],
         adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };    });
     const baseOrder = { shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
       clientName:`${name} ${lastname}`.trim(), clientFirstName:name, clientLastName:lastname,
@@ -2637,10 +2640,44 @@ async function startApp() {
       if (idx>-1) { ns.clients[idx] = mergeClientData(ns.clients[idx], {name, lastname, whatsapp, contact:whatsapp, address}); client = ns.clients[idx]; }
     }
     const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id };
-    ns.menuOrders.push(order); updateState(ns);
+    ns.menuOrders.push(order);
+    appendPurchaseFromMenuOrder(ns, order);   // crea el pedido en el módulo de Compras
+    updateState(ns);
     const emailSent = await sendOrderEmail(order);
     showOrderConfirmed(order, name, emailSent);
     resetOrderForm();
+  };
+
+  // Convierte un pedido del menú en un pedido del módulo de Compras (platos + cantidades)
+  const appendPurchaseFromMenuOrder = (ns, mo) => {
+    if (!mo || ns.customerOrders.some(o=>o.menuOrderId===mo.id)) return;
+    const qtyByDish = {};
+    (mo.pedidos||[]).forEach(p=>{
+      const mi = ns.menu.find(m=>m.id===p.itemId);
+      const dishIds = (p.itemDishIds && p.itemDishIds.length) ? p.itemDishIds : (mi ? (mi.dishIds||[]) : []);
+      dishIds.forEach(did=>{ qtyByDish[did]=(qtyByDish[did]||0)+1; });
+      (p.adicionales||[]).forEach(a=>{ if(a.dishId) qtyByDish[a.dishId]=(qtyByDish[a.dishId]||0)+1; });
+    });
+    const items = Object.entries(qtyByDish).map(([did,qty])=>{
+      const dish=state.dishes.find(d=>d.id===did);
+      const uc=dish?calculateDishCost(dish):0;
+      return { id:did, name:dish?dish.name:'(plato eliminado)', quantity:qty, unitCost:uc, totalCost:uc*qty };
+    }).filter(it=>it.quantity>0);
+    if (!items.length) return;
+    const date = mo.date || new Date().toISOString().slice(0,10);
+    let seq = (ns.lastOrderSequence[date]||0) + 1;
+    ns.lastOrderSequence[date] = seq;
+    const [y,m,d] = date.split('-');
+    const shortId = (y&&m&&d) ? `${y.substring(2)}${m}${d}-${seq.toString().padStart(3,'0')}` : `MENU-${Date.now()}`;
+    ns.customerOrders.push({
+      id:`order-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
+      shortId, date,
+      clientId: mo.clientId||null,
+      clientName: mo.clientName || 'Cliente (menú)',
+      items,
+      totalCost: items.reduce((s,i)=>s+i.totalCost,0),
+      menuOrderId: mo.id, source:'menu'
+    });
   };
 
   // Envía copia del pedido al correo del cliente vía EmailJS
