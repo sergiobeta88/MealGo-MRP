@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
     <!-- ============================================================
          FIREBASE SDK
@@ -619,6 +620,18 @@
 
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-4">Pedidos Recibidos</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
+            <div class="sm:col-span-2"><label class="block text-xs font-medium text-gray-500">Buscar por cliente</label>
+              <input type="text" id="menu-orders-filter-name" placeholder="Nombre del cliente…" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+            <div><label class="block text-xs font-medium text-gray-500">Desde</label>
+              <input type="date" id="menu-orders-filter-from" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+            <div><label class="block text-xs font-medium text-gray-500">Hasta</label>
+              <input type="date" id="menu-orders-filter-to" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+          </div>
+          <div class="flex items-center justify-between mb-2">
+            <p id="menu-orders-count" class="text-xs text-gray-500"></p>
+            <button type="button" id="menu-orders-clear-filters" class="text-xs text-blue-600 font-semibold">Limpiar filtros</button>
+          </div>
           <div id="menu-orders-received" class="space-y-3 max-h-96 overflow-y-auto"></div>
         </div>
       </div>
@@ -721,6 +734,14 @@ const CLIENT_MODE = new URLSearchParams(location.search).get('modo') === 'pedido
 // Opcional: restringir también la interfaz del panel a ciertos correos. Vacío = cualquier cuenta Google
 // (la seguridad real de los datos la dan las reglas de Firebase). Ej: ['tucorreo@gmail.com']
 const ADMIN_EMAILS = ['sergiobeta88@gmail.com', 'orejuela2993@gmail.com'];
+
+// ── EmailJS: envía copia del pedido al correo del cliente ──
+// Reemplaza estos tres valores por los de tu cuenta de EmailJS (ver instructivo).
+const EMAILJS_PUBLIC_KEY  = '_napT1fKvAfCr4GZe';
+const EMAILJS_SERVICE_ID  = 'service_rp9z95b';
+const EMAILJS_TEMPLATE_ID = 'template_ir8axur';
+const EMAILJS_READY = () => window.emailjs && EMAILJS_PUBLIC_KEY && !EMAILJS_PUBLIC_KEY.startsWith('TU_') && !EMAILJS_SERVICE_ID.startsWith('TU_') && !EMAILJS_TEMPLATE_ID.startsWith('TU_');
+try { if (EMAILJS_READY()) window.emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY }); } catch(e){ console.error('EmailJS init', e); }
 
 let _appStarted = false;
 const beginApp = () => { if (_appStarted) return; _appStarted = true; startApp(); };
@@ -2387,8 +2408,27 @@ async function startApp() {
 
   const renderMenuOrdersReceived = () => {
     const cont=document.getElementById('menu-orders-received'); if(!cont) return;
-    const orders=[...state.menuOrders].reverse();
-    if(!orders.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no se han recibido pedidos.</p>'; return; }
+    const countEl=document.getElementById('menu-orders-count');
+    const nameF=(document.getElementById('menu-orders-filter-name')?.value||'').trim().toLowerCase();
+    const fromF=document.getElementById('menu-orders-filter-from')?.value||'';
+    const toF=document.getElementById('menu-orders-filter-to')?.value||'';
+    const active = !!(nameF||fromF||toF);
+    let orders=[...state.menuOrders].reverse(); // más recientes primero
+    orders = orders.filter(o=>{
+      if (nameF && !((o.clientName||'').toLowerCase().includes(nameF))) return false;
+      if (fromF && (o.date||'') < fromF) return false;
+      if (toF && (o.date||'') > toF) return false;
+      return true;
+    });
+    const totalMatch = orders.length;
+    if (!active) orders = orders.slice(0,10); // por defecto solo los últimos 10
+    if (countEl) {
+      if (!state.menuOrders.length) countEl.textContent='';
+      else if (active) countEl.textContent=`${totalMatch} pedido(s) encontrado(s)`;
+      else countEl.textContent=`Mostrando los últimos ${orders.length} de ${state.menuOrders.length} pedidos`;
+    }
+    if(!state.menuOrders.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no se han recibido pedidos.</p>'; return; }
+    if(!orders.length){ cont.innerHTML='<p class="text-gray-400 italic">No hay pedidos que coincidan con el filtro.</p>'; return; }
     cont.innerHTML = orders.map(o=>{
       const contact=[o.clientEmail,o.clientPhone,o.clientAddress].filter(Boolean).join(' · ');
       return `<div class="p-3 border rounded-lg bg-white">
@@ -2580,7 +2620,8 @@ async function startApp() {
       let ok = true;
       if (window._fbPushOrder) { const key = await window._fbPushOrder(order); ok = !!key; }
       if (!ok) { showMenuOrderMsg('<p class="text-red-700 font-semibold">No se pudo enviar el pedido. Revisa tu conexión e inténtalo de nuevo.</p>', false); return; }
-      showOrderConfirmed(order, name);
+      const emailSent = await sendOrderEmail(order);
+      showOrderConfirmed(order, name, emailSent);
       resetOrderForm();
       return;
     }
@@ -2597,8 +2638,29 @@ async function startApp() {
     }
     const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id };
     ns.menuOrders.push(order); updateState(ns);
-    showOrderConfirmed(order, name);
+    const emailSent = await sendOrderEmail(order);
+    showOrderConfirmed(order, name, emailSent);
     resetOrderForm();
+  };
+
+  // Envía copia del pedido al correo del cliente vía EmailJS
+  const sendOrderEmail = async (order) => {
+    if (!EMAILJS_READY() || !order.clientEmail) return false;
+    try {
+      const resumen = order.pedidos.map((p,i)=>{
+        const adis=(p.adicionales||[]).map(a=>`    + ${a.name}: ${fmtCur(a.price)}`).join('\n');
+        return `Pedido ${i+1}: ${p.itemName} - ${fmtCur(p.itemPrice)}${adis?'\n'+adis:''}\n    Subtotal: ${fmtCur(p.subtotal)}`;
+      }).join('\n\n');
+      await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email:     order.clientEmail,
+        client_name:  order.clientName,
+        order_id:     order.shortId,
+        order_date:   order.date,
+        order_summary: resumen,
+        order_total:  fmtCur(order.total),
+      });
+      return true;
+    } catch(e) { console.error('EmailJS send error', e); return false; }
   };
 
   // Solo sobrescribe con los datos entrantes que NO estén vacíos (no borra lo ya registrado)
@@ -2608,10 +2670,14 @@ async function startApp() {
     return out;
   };
 
-  const showOrderConfirmed = (order, name) => {
+  const showOrderConfirmed = (order, name, emailSent) => {
+    const emailLine = emailSent
+      ? `<p class="text-sm text-green-700 mt-2">📧 Te enviamos una copia de tu pedido al correo <b>${order.clientEmail}</b>.</p>`
+      : '';
     showMenuOrderMsg(`<h3 class="text-xl font-bold text-green-700 mb-2">¡Pedido confirmado! (${order.shortId})</h3>
       <p class="text-sm text-gray-600 mb-2">Gracias, ${name}. Este es el resumen de tu pedido:</p>
       ${orderDetailHtml(order)}
+      ${emailLine}
       <div class="mt-3 p-3 bg-white border border-green-300 rounded-lg text-center">
         <p class="font-semibold text-gray-800">Enviar pago a nequi / llave Bre-b:</p>
         <p class="text-lg font-bold text-green-700 font-mono">3214190410</p>
@@ -2666,6 +2732,13 @@ async function startApp() {
     });
     // pedidos recibidos: eliminar
     on('menu-orders-received','click',e=>{ if(e.target.classList.contains('menu-order-delete-btn')){ handleDeleteMenuOrder(e.target.dataset.orderid); } });
+    on('menu-orders-filter-name','input',renderMenuOrdersReceived);
+    on('menu-orders-filter-from','change',renderMenuOrdersReceived);
+    on('menu-orders-filter-to','change',renderMenuOrdersReceived);
+    on('menu-orders-clear-filters','click',()=>{
+      ['menu-orders-filter-name','menu-orders-filter-from','menu-orders-filter-to'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+      renderMenuOrdersReceived();
+    });
     // formulario de pedido: tipo de cliente
     on('menu-kind-new','click',()=>setMenuClientKind('nuevo'));
     on('menu-kind-existing','click',()=>setMenuClientKind('existente'));
