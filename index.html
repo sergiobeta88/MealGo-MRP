@@ -2644,23 +2644,36 @@ async function startApp() {
   };
 
   // Envía copia del pedido al correo del cliente vía EmailJS
+  let lastEmailError = '';
   const sendOrderEmail = async (order) => {
-    if (!EMAILJS_READY() || !order.clientEmail) return false;
+    lastEmailError = '';
+    if (!window.emailjs) { lastEmailError='El SDK de EmailJS no cargó'; console.error(lastEmailError); return false; }
+    if (!EMAILJS_READY()) { lastEmailError='EmailJS no configurado (faltan credenciales)'; console.error(lastEmailError); return false; }
+    if (!order.clientEmail) { lastEmailError='El pedido no tiene correo'; return false; }
     try {
       const resumen = order.pedidos.map((p,i)=>{
         const adis=(p.adicionales||[]).map(a=>`    + ${a.name}: ${fmtCur(a.price)}`).join('\n');
         return `Pedido ${i+1}: ${p.itemName} - ${fmtCur(p.itemPrice)}${adis?'\n'+adis:''}\n    Subtotal: ${fmtCur(p.subtotal)}`;
       }).join('\n\n');
-      await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        to_email:     order.clientEmail,
-        client_name:  order.clientName,
-        order_id:     order.shortId,
-        order_date:   order.date,
+      const params = {
+        to_email:      order.clientEmail,
+        email:         order.clientEmail,   // alias por si la plantilla usa {{email}}
+        reply_to:      order.clientEmail,
+        client_name:   order.clientName,
+        order_id:      order.shortId,
+        order_date:    order.date,
         order_summary: resumen,
-        order_total:  fmtCur(order.total),
-      });
+        order_total:   fmtCur(order.total),
+      };
+      // Pasamos la publicKey explícitamente para no depender del init previo
+      const resp = await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, params, { publicKey: EMAILJS_PUBLIC_KEY });
+      console.log('EmailJS enviado:', resp && resp.status, resp && resp.text);
       return true;
-    } catch(e) { console.error('EmailJS send error', e); return false; }
+    } catch(e) {
+      lastEmailError = (e && (e.text || e.message)) || JSON.stringify(e);
+      console.error('EmailJS send error:', e);
+      return false;
+    }
   };
 
   // Solo sobrescribe con los datos entrantes que NO estén vacíos (no borra lo ya registrado)
@@ -2673,7 +2686,7 @@ async function startApp() {
   const showOrderConfirmed = (order, name, emailSent) => {
     const emailLine = emailSent
       ? `<p class="text-sm text-green-700 mt-2">📧 Te enviamos una copia de tu pedido al correo <b>${order.clientEmail}</b>.</p>`
-      : '';
+      : `<p class="text-xs text-gray-400 mt-2">No pudimos enviar la copia por correo en este momento (tu pedido sí quedó registrado).${lastEmailError?` <span class="text-gray-300">[${lastEmailError}]</span>`:''}</p>`;
     showMenuOrderMsg(`<h3 class="text-xl font-bold text-green-700 mb-2">¡Pedido confirmado! (${order.shortId})</h3>
       <p class="text-sm text-gray-600 mb-2">Gracias, ${name}. Este es el resumen de tu pedido:</p>
       ${orderDetailHtml(order)}
