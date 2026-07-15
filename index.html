@@ -584,6 +584,7 @@
       <div class="flex flex-wrap gap-2">
         <button id="menu-tab-admin" type="button" class="py-2 px-5 rounded-lg font-semibold btn-primary">Gestión del Menú</button>
         <button id="menu-tab-order" type="button" class="py-2 px-5 rounded-lg font-semibold btn-secondary">Formulario de Pedido (Cliente)</button>
+        <button id="menu-tab-orders" type="button" class="py-2 px-5 rounded-lg font-semibold btn-secondary">Pedidos Recibidos</button>
       </div>
 
       <!-- ===== Vista: Gestión del Menú (administrador) ===== -->
@@ -617,7 +618,10 @@
           <p class="text-sm text-gray-500 mb-4">Marca los platos que estarán disponibles como adicional (agrupados por tipo) y escribe su precio de venta. Se muestra el costo de cada plato.</p>
           <div id="adicionales-checklist" class="border border-gray-200 rounded-md bg-white p-2 max-h-96 overflow-y-auto"></div>
         </div>
+      </div>
 
+      <!-- ===== Vista: Pedidos Recibidos ===== -->
+      <div id="menu-orders-view" class="hidden space-y-6">
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-4">Pedidos Recibidos</h2>
           <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
@@ -632,7 +636,7 @@
             <p id="menu-orders-count" class="text-xs text-gray-500"></p>
             <button type="button" id="menu-orders-clear-filters" class="text-xs text-blue-600 font-semibold">Limpiar filtros</button>
           </div>
-          <div id="menu-orders-received" class="space-y-3 max-h-96 overflow-y-auto"></div>
+          <div id="menu-orders-received" class="space-y-3 max-h-[36rem] overflow-y-auto"></div>
         </div>
       </div>
 
@@ -2463,12 +2467,11 @@ async function startApp() {
       pending.forEach(([pid, ord])=>{
         if (ns.menuOrders.some(o=>o.publicId===pid)) return;
         const imported = { ...ord, publicId: pid, id: ord.id || `morder-${Date.now()}-${Math.random().toString(36).slice(2,6)}` };
-        // crear o actualizar el cliente por correo
+        // resolver/crear cliente por correo (opción B: existente => manda el módulo)
         if (imported.clientEmail) {
-          const idx = ns.clients.findIndex(c=>(c.email||'').trim().toLowerCase()===imported.clientEmail.trim().toLowerCase());
-          const cdata = { name:imported.clientFirstName||'', lastname:imported.clientLastName||'', contact:imported.clientPhone||'', whatsapp:imported.clientPhone||'', email:imported.clientEmail, address:imported.clientAddress||'' };
-          if (idx>-1) { ns.clients[idx]=mergeClientData(ns.clients[idx], cdata); imported.clientId=ns.clients[idx].id; imported.clientName=clientFullName(ns.clients[idx])||imported.clientName; }
-          else { const nc={ id:`client-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, status:'activo', ...cdata }; ns.clients.push(nc); imported.clientId=nc.id; imported.clientName=clientFullName(nc)||imported.clientName; }
+          const cli = resolveOrCreateClient(ns, { email:imported.clientEmail, name:imported.clientFirstName, lastname:imported.clientLastName, whatsapp:imported.clientPhone, address:imported.clientAddress, kind:imported.clientKind });
+          imported.clientId = cli.id;
+          imported.clientName = clientFullName(cli) || imported.clientName;
         }
         ns.menuOrders.push(imported);
         appendPurchaseFromMenuOrder(ns, imported);   // crea el pedido en el módulo de Compras
@@ -2486,7 +2489,9 @@ async function startApp() {
     document.getElementById('menu-section')?.classList.remove('hidden');
     document.getElementById('menu-tab-admin')?.classList.add('hidden');
     document.getElementById('menu-tab-order')?.classList.add('hidden');
+    document.getElementById('menu-tab-orders')?.classList.add('hidden');
     document.getElementById('menu-admin-view')?.classList.add('hidden');
+    document.getElementById('menu-orders-view')?.classList.add('hidden');
     document.getElementById('menu-order-view')?.classList.remove('hidden');
     // Logo más grande y subtítulo enfocado al cliente
     const hdrImg=document.querySelector('.app-header .brand img'); if(hdrImg) hdrImg.style.height='170px';
@@ -2541,19 +2546,16 @@ async function startApp() {
   };
 
   const switchMenuTab = which => {
-    const admin=document.getElementById('menu-admin-view'), order=document.getElementById('menu-order-view');
-    const ta=document.getElementById('menu-tab-admin'), to=document.getElementById('menu-tab-order');
-    if (!admin||!order) return;
-    if (which==='order') {
-      admin.classList.add('hidden'); order.classList.remove('hidden');
-      to.classList.add('btn-primary'); to.classList.remove('btn-secondary');
-      ta.classList.add('btn-secondary'); ta.classList.remove('btn-primary');
-      renderPedidoBlocks(); updateMenuOrderTotal();
-    } else {
-      order.classList.add('hidden'); admin.classList.remove('hidden');
-      ta.classList.add('btn-primary'); ta.classList.remove('btn-secondary');
-      to.classList.add('btn-secondary'); to.classList.remove('btn-primary');
-    }
+    const views={ admin:'menu-admin-view', order:'menu-order-view', orders:'menu-orders-view' };
+    const tabs ={ admin:'menu-tab-admin',  order:'menu-tab-order',  orders:'menu-tab-orders' };
+    Object.entries(views).forEach(([k,id])=>{
+      const v=document.getElementById(id); const t=document.getElementById(tabs[k]);
+      const active = (k===which);
+      if(v) v.classList.toggle('hidden', !active);
+      if(t){ t.classList.toggle('btn-primary', active); t.classList.toggle('btn-secondary', !active); }
+    });
+    if (which==='order') { renderPedidoBlocks(); updateMenuOrderTotal(); }
+    if (which==='orders') { renderMenuOrdersReceived(); }
   };
 
   const showMenuOrderMsg = (html, ok=true) => {
@@ -2615,7 +2617,7 @@ async function startApp() {
         adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };    });
     const baseOrder = { shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
       clientName:`${name} ${lastname}`.trim(), clientFirstName:name, clientLastName:lastname,
-      clientEmail:email, clientPhone:whatsapp, clientAddress:address, pedidos, total };
+      clientEmail:email, clientPhone:whatsapp, clientAddress:address, clientKind:menuClientKind, pedidos, total };
 
     if (CLIENT_MODE) {
       // El cliente NO puede escribir en la base del administrador: su pedido va a la zona pública
@@ -2629,16 +2631,9 @@ async function startApp() {
       return;
     }
 
-    // Modo administrador: guarda en la base y crea/actualiza el cliente
+    // Modo administrador: resuelve el cliente por correo (opción B: si es existente, manda el módulo)
     const ns = JSON.parse(JSON.stringify(state));
-    let client = lookupClientByEmail(email);
-    if (!client) {
-      client = { id:`client-${Date.now()}`, name, lastname, contact:whatsapp, whatsapp, email, address, status:'activo' };
-      ns.clients.push(client);
-    } else {
-      const idx = ns.clients.findIndex(c=>c.id===client.id);
-      if (idx>-1) { ns.clients[idx] = mergeClientData(ns.clients[idx], {name, lastname, whatsapp, contact:whatsapp, address}); client = ns.clients[idx]; }
-    }
+    const client = resolveOrCreateClient(ns, { email, name, lastname, whatsapp, address, kind:menuClientKind });
     const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id, clientName: clientFullName(client) || baseOrder.clientName };
     ns.menuOrders.push(order);
     appendPurchaseFromMenuOrder(ns, order);   // crea el pedido en el módulo de Compras
@@ -2649,6 +2644,24 @@ async function startApp() {
   };
 
   const clientFullName = c => c ? `${c.name||''} ${c.lastname||''}`.trim() : '';
+
+  // Resuelve el cliente por correo. Opción B: si YA existe (cliente existente), el módulo manda
+  // (no se sobrescribe su nombre). Solo un cliente 'nuevo' define/actualiza sus datos.
+  const resolveOrCreateClient = (ns, d) => {
+    const email=(d.email||'').trim();
+    const idx = email ? ns.clients.findIndex(c=>(c.email||'').trim().toLowerCase()===email.toLowerCase()) : -1;
+    if (idx > -1) {
+      if (d.kind === 'nuevo') {
+        ns.clients[idx] = mergeClientData(ns.clients[idx], { name:d.name, lastname:d.lastname, whatsapp:d.whatsapp, contact:d.whatsapp, address:d.address });
+      }
+      return ns.clients[idx]; // existente: se respeta lo registrado
+    }
+    const nc = { id:`client-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      name:d.name||'', lastname:d.lastname||'', contact:d.whatsapp||'', whatsapp:d.whatsapp||'',
+      email, address:d.address||'', status:'activo' };
+    ns.clients.push(nc);
+    return nc;
+  };
 
   // Convierte un pedido del menú en un pedido del módulo de Compras (platos + cantidades)
   const appendPurchaseFromMenuOrder = (ns, mo) => {
@@ -2753,6 +2766,7 @@ async function startApp() {
     const on = (id,ev,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener(ev,fn); };
     on('menu-tab-admin','click',()=>switchMenuTab('admin'));
     on('menu-tab-order','click',()=>switchMenuTab('order'));
+    on('menu-tab-orders','click',()=>switchMenuTab('orders'));
     // checklist del constructor de ítems (con costo en vivo)
     on('menu-item-dish-checklist','change',e=>{ if(e.target.classList.contains('menu-item-dish-check')){ const id=e.target.dataset.dishid, i=menuBuilder.dishIds.indexOf(id); if(e.target.checked&&i<0)menuBuilder.dishIds.push(id); else if(!e.target.checked&&i>=0)menuBuilder.dishIds.splice(i,1); updateMenuItemBuilderCost(); } });
     on('menu-item-add-btn','click',()=>{
