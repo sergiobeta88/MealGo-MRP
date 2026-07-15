@@ -1466,10 +1466,26 @@ async function startApp() {
         const items=Array.isArray(order.items)?order.items:[];
         const iHtml=items.map(it=>`<li class="flex justify-between text-xs py-0.5"><span class="font-bold">${it.quantity} x ${it.name}</span><span class="text-gray-600">${fmtCur(it.unitCost)} c/u</span></li>`).join('');
         let ingHtml='';
-        items.forEach(it=>{ const di=getBI(it.id,it.quantity);
-          const ilist=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>{const ck=`c3|${date}|${order.id||order.shortId||''}|${it.id}|${i.name}`;return `<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-xs cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;}).join('');
-          if(ilist) ingHtml+=`<div class="mb-3 border border-gray-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Para ${it.quantity} x ${it.name}</h6><div class="p-2 space-y-0.5">${ilist}</div></div>`;
-        });
+        const mkIngList = (dishId, qty, keyExtra) => {
+          const di=getBI(dishId,qty);
+          return Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>{const ck=`c3|${date}|${order.id||order.shortId||''}|${keyExtra}|${i.name}`;return `<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-xs cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;}).join('');
+        };
+        if (Array.isArray(order.menuPedidos) && order.menuPedidos.length) {
+          // Agrupado por pedido del cliente: plato principal + adicionales, en orden (guía de emplatado)
+          order.menuPedidos.forEach((ped,pi)=>{
+            const inner = ped.dishes.map((dd,di2)=>{
+              const ilist = mkIngList(dd.id, 1, `p${pi}-${di2}-${dd.id}`);
+              return `<div class="mt-1"><p class="text-xs font-semibold ${dd.adicional?'text-gray-500':'text-gray-800'}">${dd.adicional?'+ ':''}${dd.name}</p><div class="pl-2">${ilist||'<span class="text-xs text-gray-400 italic">sin ingredientes</span>'}</div></div>`;
+            }).join('');
+            ingHtml += `<div class="mb-3 border-2 border-orange-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Pedido ${pi+1} — ${ped.itemName}</h6><div class="p-2">${inner}</div></div>`;
+          });
+        } else {
+          // Órdenes creadas manualmente: agrupado por plato
+          items.forEach(it=>{
+            const ilist = mkIngList(it.id, it.quantity, `${it.id}`);
+            if(ilist) ingHtml+=`<div class="mb-3 border border-gray-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Para ${it.quantity} x ${it.name}</h6><div class="p-2 space-y-0.5">${ilist}</div></div>`;
+          });
+        }
         html+=`<div class="p-3 bg-white rounded border mb-4 shadow-md">
           <div class="flex justify-between items-center border-b pb-1 mb-2">
             <div class="text-sm"><p class="font-bold text-gray-800">Orden ID: ${order.shortId||'N/A'}</p>
@@ -1479,7 +1495,7 @@ async function startApp() {
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Platos a Empacar:</h5><ul class="list-disc list-inside space-y-0.5 pl-2">${iHtml}</ul></div>
-            <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Ingredientes (por Plato):</h5><div class="space-y-2">${ingHtml}</div></div>
+            <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Composición por pedido (para emplatar):</h5><div class="space-y-2">${ingHtml}</div></div>
           </div></div>`;
       });
       html+='</div>';
@@ -2679,6 +2695,15 @@ async function startApp() {
       return { id:did, name:dish?dish.name:'(plato eliminado)', quantity:qty, unitCost:uc, totalCost:uc*qty };
     }).filter(it=>it.quantity>0);
     if (!items.length) return;
+    // Estructura por pedido (plato principal + adicionales, en orden) para emplatado
+    const menuPedidos = (mo.pedidos||[]).map(p=>{
+      const mi = ns.menu.find(m=>m.id===p.itemId);
+      const mainDishIds = (p.itemDishIds && p.itemDishIds.length) ? p.itemDishIds : (mi ? (mi.dishIds||[]) : []);
+      const dishes = [];
+      mainDishIds.forEach(did=>{ const dd=state.dishes.find(x=>x.id===did); dishes.push({ id:did, name:dd?dd.name:'(plato eliminado)', adicional:false }); });
+      (p.adicionales||[]).forEach(a=>{ dishes.push({ id:a.dishId, name:a.name||adicName(a.dishId), adicional:true }); });
+      return { itemName: p.itemName || (mi?mi.name:'Plato'), dishes };
+    });
     // Datos del cliente tomados del módulo de Clientes (por id o por correo)
     let cli = null;
     if (mo.clientId) cli = ns.clients.find(c=>c.id===mo.clientId);
@@ -2695,7 +2720,7 @@ async function startApp() {
       clientName: cli ? clientFullName(cli) : (mo.clientName || 'Cliente (menú)'),
       items,
       totalCost: items.reduce((s,i)=>s+i.totalCost,0),
-      menuOrderId: mo.id, source:'menu'
+      menuOrderId: mo.id, source:'menu', menuPedidos
     });
   };
 
