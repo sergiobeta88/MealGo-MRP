@@ -14,8 +14,10 @@
     ============================================================ -->
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-      import { getDatabase, ref, set, get, onValue }
+      import { getDatabase, ref, set, get, onValue, push, remove }
         from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+      import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, onAuthStateChanged, signOut }
+        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
       import { getAnalytics }
         from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
 
@@ -70,6 +72,23 @@
             return true;
           } catch(e) { console.error("Firebase subscribe error:", e); return false; }
         };
+
+        // ── Autenticación ──
+        const auth = getAuth(app);
+        window._fbGoogleSignIn = () => signInWithPopup(auth, new GoogleAuthProvider());
+        window._fbAnonSignIn   = () => signInAnonymously(auth);
+        window._fbSignOut      = () => signOut(auth);
+        window._fbOnAuth       = (cb) => onAuthStateChanged(auth, cb);
+
+        // ── Menú público (lo que el cliente puede ver) ──
+        window._fbPublishMenu     = (data) => set(ref(db, 'mealgo/public/menu'), data).then(()=>true).catch(e=>{console.error('publish menu',e);return false;});
+        window._fbLoadPublicMenu  = async () => { try { const s=await get(ref(db,'mealgo/public/menu')); return s.exists()?s.val():null; } catch(e){ console.error('load public menu',e); return null; } };
+        window._fbSubscribePublicMenu = (cb) => { try { onValue(ref(db,'mealgo/public/menu'), s=>cb(s.exists()?s.val():null)); return true; } catch(e){ console.error('sub public menu',e); return false; } };
+
+        // ── Pedidos de clientes (zona pública, solo crear) ──
+        window._fbPushOrder       = (order) => push(ref(db, 'mealgo/public/orders'), order).then(r=>r.key).catch(e=>{console.error('push order',e);return null;});
+        window._fbSubscribeOrders = (cb) => { try { onValue(ref(db,'mealgo/public/orders'), s=>cb(s.exists()?s.val():{})); return true; } catch(e){ console.error('sub orders',e); return false; } };
+        window._fbDeleteOrder     = (id) => remove(ref(db, 'mealgo/public/orders/'+id)).then(()=>true).catch(e=>{console.error('del order',e);return false;});
 
         window._firebaseReady = true;
         log('🚀 Firebase listo — disparando evento');
@@ -175,6 +194,14 @@
   <button id="skip-firebase-btn" style="display:none;margin-top:1rem;padding:0.5rem 1.5rem;background:#f97316;color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">
     Continuar sin Firebase →
   </button>
+</div>
+
+<!-- Login de administrador -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:#f3f4f6;z-index:100;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:1rem;text-align:center;">
+  <img src="logo_mealgo.png" alt="MealGo!" style="height:56px;object-fit:contain;" onerror="this.style.display='none'">
+  <h1 style="font-size:1.5rem;font-weight:800;color:#1f2937;">MealGo! — Panel de administración</h1>
+  <p id="login-msg" style="color:#6b7280;">Inicia sesión para administrar</p>
+  <button id="login-google-btn" style="padding:0.7rem 1.6rem;background:#f97316;color:white;border:none;border-radius:10px;font-weight:700;font-size:1rem;cursor:pointer;">Iniciar sesión con Google</button>
 </div>
 
 <div class="min-h-screen container mx-auto px-4 pb-8">
@@ -683,19 +710,67 @@
      LÓGICA PRINCIPAL (igual que el original, adaptado a Firebase)
 ══════════════════════════════════════════════════════════════ -->
 <script>
-// ─── Iniciamos la app cuando Firebase dispare su evento ───
-document.addEventListener('firebase-ready', startApp, { once: true });
+// ─── Modo de la app: cliente (solo pedidos) o administrador ───
+const CLIENT_MODE = new URLSearchParams(location.search).get('modo') === 'pedido';
+// Opcional: restringir también la interfaz del panel a ciertos correos. Vacío = cualquier cuenta Google
+// (la seguridad real de los datos la dan las reglas de Firebase). Ej: ['tucorreo@gmail.com']
+const ADMIN_EMAILS = [];
 
-// Botón de emergencia: si en 8 segundos no arranca, mostrar opción de continuar sin Firebase
+let _appStarted = false;
+const beginApp = () => { if (_appStarted) return; _appStarted = true; startApp(); };
+
+function showLogin(msg) {
+  const so=document.getElementById('sync-overlay'); if(so) so.style.display='none';
+  const lo=document.getElementById('login-overlay'); if(lo) lo.style.display='flex';
+  if (msg) { const m=document.getElementById('login-msg'); if(m) m.textContent=msg; }
+}
+
+async function bootstrap() {
+  // Modo cliente: entra sin credenciales (firma anónima) y solo verá el formulario de pedido
+  if (CLIENT_MODE) {
+    try { if (window._fbAnonSignIn) await window._fbAnonSignIn(); } catch(e){ console.error('anon sign-in', e); }
+    beginApp();
+    return;
+  }
+  // Modo administrador: requiere iniciar sesión con Google
+  if (!window._fbOnAuth) { beginApp(); return; } // sin Firebase (fallback offline)
+  window._fbOnAuth(user => {
+    if (user && !user.isAnonymous) {
+      if (ADMIN_EMAILS.length && !ADMIN_EMAILS.includes((user.email||'').toLowerCase())) {
+        if (window._fbSignOut) window._fbSignOut();
+        showLogin('Esta cuenta no está autorizada para el panel.');
+        return;
+      }
+      const lo=document.getElementById('login-overlay'); if(lo) lo.style.display='none';
+      beginApp();
+    } else {
+      showLogin();
+    }
+  });
+}
+document.addEventListener('firebase-ready', bootstrap, { once: true });
+
+// Botón de login con Google
+document.addEventListener('DOMContentLoaded', () => {
+  const b=document.getElementById('login-google-btn');
+  if (b) b.addEventListener('click', async () => {
+    const m=document.getElementById('login-msg');
+    try { if(m) m.textContent='Abriendo Google…'; await window._fbGoogleSignIn(); }
+    catch(e){ if(m) m.textContent='No se pudo iniciar sesión: '+(e.code||e.message); }
+  });
+});
+
+// Fallback offline: si en 8s no hay Firebase (solo modo admin)
 setTimeout(() => {
-  const overlay = document.getElementById('sync-overlay');
+  if (_appStarted || CLIENT_MODE) return;
   const btn = document.getElementById('skip-firebase-btn');
-  if (overlay && overlay.style.display !== 'none' && btn) {
+  if (btn && !window._firebaseReady) {
+    document.getElementById('sync-overlay').style.display='flex';
     btn.style.display = 'block';
     btn.addEventListener('click', () => {
       window._fbSave = async () => false;
       window._fbLoad = async () => null;
-      startApp();
+      beginApp();
     }, { once: true });
   }
 }, 8000);
@@ -784,11 +859,20 @@ async function startApp() {
         // Marcamos el autor para que el resto de equipos sepan que el cambio no es suyo
         const ok = await window._fbSave({ ...state, _meta: { writer: CLIENT_ID, ts: Date.now() } });
         setStatus(ok ? 'connected' : 'error');
+        publishPublicMenu(); // publica el menú visible para los clientes
       } else {
         setStatus('error');
       }
     }, 800);
   };
+
+  // Snapshot del menú que SÍ puede ver el cliente (solo nombres y precios de venta)
+  const buildPublicMenu = () => ({
+    menu: (state.menu||[]).map(m=>({ id:m.id, name:m.name, price:m.price||0 })),
+    adicionales: (state.adicionales||[]).map(a=>({ dishId:a.dishId, name:adicName(a.dishId), price:a.price||0 })),
+    ts: Date.now(),
+  });
+  const publishPublicMenu = () => { if (!CLIENT_MODE && window._fbPublishMenu) window._fbPublishMenu(buildPublicMenu()); };
 
   // Normaliza y migra los datos crudos de Firebase a la forma que usa la app
   const buildStateFromData = (data) => {
@@ -2310,7 +2394,50 @@ async function startApp() {
     }).join('');
   };
 
-  const handleDeleteMenuOrder = id => { const ns=JSON.parse(JSON.stringify(state)); ns.menuOrders=ns.menuOrders.filter(o=>o.id!==id); updateState(ns); };
+  const handleDeleteMenuOrder = id => {
+    const ns=JSON.parse(JSON.stringify(state));
+    const ord = ns.menuOrders.find(o=>o.id===id);
+    if (ord && ord.publicId && window._fbDeleteOrder) window._fbDeleteOrder(ord.publicId);
+    ns.menuOrders=ns.menuOrders.filter(o=>o.id!==id);
+    updateState(ns);
+  };
+
+  // El administrador recibe los pedidos que los clientes dejaron en la zona pública
+  const subscribeClientOrders = () => {
+    if (CLIENT_MODE || !window._fbSubscribeOrders) return;
+    window._fbSubscribeOrders(ordersObj => {
+      const entries = Object.entries(ordersObj||{});
+      const pending = entries.filter(([pid]) => !state.menuOrders.some(o=>o.publicId===pid));
+      if (!pending.length) return;
+      const ns = JSON.parse(JSON.stringify(state));
+      pending.forEach(([pid, ord])=>{
+        if (ns.menuOrders.some(o=>o.publicId===pid)) return;
+        const imported = { ...ord, publicId: pid, id: ord.id || `morder-${Date.now()}-${Math.random().toString(36).slice(2,6)}` };
+        // crear o actualizar el cliente por correo
+        if (imported.clientEmail) {
+          const idx = ns.clients.findIndex(c=>(c.email||'').trim().toLowerCase()===imported.clientEmail.trim().toLowerCase());
+          const cdata = { name:imported.clientFirstName||'', lastname:imported.clientLastName||'', contact:imported.clientPhone||'', whatsapp:imported.clientPhone||'', email:imported.clientEmail, address:imported.clientAddress||'' };
+          if (idx>-1) ns.clients[idx]={...ns.clients[idx], ...cdata};
+          else ns.clients.push({ id:`client-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, status:'activo', ...cdata });
+        }
+        ns.menuOrders.push(imported);
+      });
+      updateState(ns);
+    });
+  };
+
+  // En modo cliente: ocultar todo menos el formulario de pedido
+  const applyClientModeUI = () => {
+    const nav=document.querySelector('nav'); if(nav) nav.classList.add('hidden');
+    document.getElementById('undo-btn')?.classList.add('hidden');
+    document.getElementById('firebase-status')?.classList.add('hidden');
+    Object.values(sections).forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.add('hidden'); });
+    document.getElementById('menu-section')?.classList.remove('hidden');
+    document.getElementById('menu-tab-admin')?.classList.add('hidden');
+    document.getElementById('menu-tab-order')?.classList.add('hidden');
+    document.getElementById('menu-admin-view')?.classList.add('hidden');
+    document.getElementById('menu-order-view')?.classList.remove('hidden');
+  };
 
   // ---- Formulario de pedido (cliente): SOLO precios de venta ----
   const pedidoSubtotal = p => {
@@ -2400,7 +2527,7 @@ async function startApp() {
     } else if(status){ status.textContent=''; }
   };
 
-  const handleConfirmMenuOrder = () => {
+  const handleConfirmMenuOrder = async () => {
     if (!state.menu.length) { showMenuOrderMsg('<p class="text-red-700 font-semibold">El menú no tiene ítems disponibles.</p>', false); return; }
     const email=(document.getElementById('menu-order-email').value||'').trim();
     const name=(document.getElementById('menu-order-name').value||'').trim();
@@ -2420,21 +2547,38 @@ async function startApp() {
       return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:m?(m.price||0):0,
         adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };
     });
+    const baseOrder = { shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
+      clientName:`${name} ${lastname}`.trim(), clientFirstName:name, clientLastName:lastname,
+      clientEmail:email, clientPhone:whatsapp, clientAddress:address, pedidos, total };
+
+    if (CLIENT_MODE) {
+      // El cliente NO puede escribir en la base del administrador: su pedido va a la zona pública
+      const order = { ...baseOrder, id:`morder-${Date.now()}` };
+      let ok = true;
+      if (window._fbPushOrder) { const key = await window._fbPushOrder(order); ok = !!key; }
+      if (!ok) { showMenuOrderMsg('<p class="text-red-700 font-semibold">No se pudo enviar el pedido. Revisa tu conexión e inténtalo de nuevo.</p>', false); return; }
+      showOrderConfirmed(order, name);
+      resetOrderForm();
+      return;
+    }
+
+    // Modo administrador: guarda en la base y crea/actualiza el cliente
     const ns = JSON.parse(JSON.stringify(state));
     let client = lookupClientByEmail(email);
-    const nuevoCliente = !client;
-    if (nuevoCliente) {
+    if (!client) {
       client = { id:`client-${Date.now()}`, name, lastname, contact:whatsapp, whatsapp, email, address, status:'activo' };
       ns.clients.push(client);
     } else {
-      // Cliente existente: si cambió algún dato personal, actualizarlo en el módulo de clientes
       const idx = ns.clients.findIndex(c=>c.id===client.id);
       if (idx>-1) { ns.clients[idx] = { ...ns.clients[idx], name, lastname, whatsapp, contact:whatsapp, address }; client = ns.clients[idx]; }
     }
-    const order = { id:`morder-${Date.now()}`, shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
-      clientId:client.id, clientName:`${name} ${lastname}`.trim(), clientEmail:email, clientPhone:whatsapp, clientAddress:address,
-      pedidos, total };
+    const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id };
     ns.menuOrders.push(order); updateState(ns);
+    showOrderConfirmed(order, name);
+    resetOrderForm();
+  };
+
+  const showOrderConfirmed = (order, name) => {
     showMenuOrderMsg(`<h3 class="text-xl font-bold text-green-700 mb-2">¡Pedido confirmado! (${order.shortId})</h3>
       <p class="text-sm text-gray-600 mb-2">Gracias, ${name}. Este es el resumen de tu pedido:</p>
       ${orderDetailHtml(order)}
@@ -2442,6 +2586,8 @@ async function startApp() {
         <p class="font-semibold text-gray-800">Enviar pago a nequi / llave Bre-b:</p>
         <p class="text-lg font-bold text-green-700 font-mono">3214190410</p>
       </div>`, true);
+  };
+  const resetOrderForm = () => {
     menuDraft = { count:1, pedidos:[{itemId:'',adicionales:[]}] };
     ['menu-order-email','menu-order-name','menu-order-lastname','menu-order-whatsapp','menu-order-address'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     const cc=document.getElementById('menu-order-count'); if(cc) cc.value='1';
@@ -2507,8 +2653,25 @@ async function startApp() {
     document.getElementById('generic-modal').classList.remove('hidden');
   };
 
+  const initClient = async () => {
+    // Cargar SOLO el menú público (el cliente no puede leer la base del administrador)
+    const pub = window._fbLoadPublicMenu ? await window._fbLoadPublicMenu() : null;
+    state.menu = (pub && pub.menu) || [];
+    state.adicionales = (pub && pub.adicionales) || [];
+    document.getElementById('sync-overlay').style.display='none';
+    setupEventListeners();
+    applyClientModeUI();
+    renderMenuModule();
+    // Menú en vivo: si el administrador cambia el menú, se refleja al instante
+    if (window._fbSubscribePublicMenu) window._fbSubscribePublicMenu(p=>{
+      state.menu=(p&&p.menu)||[]; state.adicionales=(p&&p.adicionales)||[];
+      renderPedidoBlocks(); updateMenuOrderTotal();
+    });
+  };
+
   const init = async () => {
     document.getElementById('sync-overlay').style.display='flex';
+    if (CLIENT_MODE) { await loadLogoForPDF().catch(()=>{}); await initClient(); return; }
     await Promise.all([loadState(), loadLogoForPDF()]);
     document.getElementById('sync-overlay').style.display='none';
     setupEventListeners();
@@ -2520,7 +2683,9 @@ async function startApp() {
     document.getElementById('production-end-date').value=today;
     populateMonthFilter();
     navigateTo('dashboard');
-    subscribeToRemoteChanges(); // a partir de aquí, los cambios de otros equipos llegan solos
+    subscribeToRemoteChanges(); // cambios de otros equipos llegan solos
+    subscribeClientOrders();    // pedidos que dejan los clientes llegan solos
+    publishPublicMenu();        // publica el menú actual para los clientes
   };
 
   await init();
