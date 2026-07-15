@@ -720,7 +720,7 @@
 const CLIENT_MODE = new URLSearchParams(location.search).get('modo') === 'pedido';
 // Opcional: restringir también la interfaz del panel a ciertos correos. Vacío = cualquier cuenta Google
 // (la seguridad real de los datos la dan las reglas de Firebase). Ej: ['tucorreo@gmail.com']
-const ADMIN_EMAILS = [];
+const ADMIN_EMAILS = ['sergiobeta88@gmail.com', 'orejuela2993@gmail.com'];
 
 let _appStarted = false;
 const beginApp = () => { if (_appStarted) return; _appStarted = true; startApp(); };
