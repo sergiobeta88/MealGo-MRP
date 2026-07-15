@@ -1464,7 +1464,7 @@ async function startApp() {
         let ingHtml='';
         items.forEach(it=>{ const di=getBI(it.id,it.quantity);
           const ilist=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>{const ck=`c3|${date}|${order.id||order.shortId||''}|${it.id}|${i.name}`;return `<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-xs cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;}).join('');
-          if(ilist) ingHtml+=`<div class="mb-2"><h6 class="font-bold text-xs text-gray-800 bg-gray-100 p-1 rounded">Para ${it.quantity} x ${it.name}:</h6><div class="space-y-0.5 pt-1 pl-2">${ilist}</div></div>`;
+          if(ilist) ingHtml+=`<div class="mb-3 border border-gray-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Para ${it.quantity} x ${it.name}</h6><div class="p-2 space-y-0.5">${ilist}</div></div>`;
         });
         html+=`<div class="p-3 bg-white rounded border mb-4 shadow-md">
           <div class="flex justify-between items-center border-b pb-1 mb-2">
@@ -2141,7 +2141,7 @@ async function startApp() {
         og.items.forEach(it=>{ ihtml+=`<p class="text-xs ml-4">- ${it.quantity} x ${it.name} (${fmtCur(it.totalCost)})</p>`;
           const di=gbi(it.id,it.quantity);
           const il=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<div class="flex justify-between border-b border-gray-100 py-0.5 text-xs"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></div>`).join('');
-          if(il) ingH+=`<div class="mb-2"><h6 class="font-bold text-xs bg-gray-100 p-1 rounded">Para ${it.quantity} x ${it.name}:</h6><div class="pl-2">${il}</div></div>`;
+          if(il) ingH+=`<div class="mb-3 border border-gray-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Para ${it.quantity} x ${it.name}</h6><div class="p-2">${il}</div></div>`;
         });
         html+=`<div class="p-2 bg-gray-100 rounded text-sm border-2 border-gray-200">
           <div class="flex justify-between items-center font-bold border-b pb-0.5 mb-0.5"><span>Orden ID ${og.shortId}</span><span class="text-green-700">${fmtCur(og.totalCost)}</span></div>
@@ -2467,8 +2467,8 @@ async function startApp() {
         if (imported.clientEmail) {
           const idx = ns.clients.findIndex(c=>(c.email||'').trim().toLowerCase()===imported.clientEmail.trim().toLowerCase());
           const cdata = { name:imported.clientFirstName||'', lastname:imported.clientLastName||'', contact:imported.clientPhone||'', whatsapp:imported.clientPhone||'', email:imported.clientEmail, address:imported.clientAddress||'' };
-          if (idx>-1) { ns.clients[idx]=mergeClientData(ns.clients[idx], cdata); imported.clientId=ns.clients[idx].id; }
-          else { const nc={ id:`client-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, status:'activo', ...cdata }; ns.clients.push(nc); imported.clientId=nc.id; }
+          if (idx>-1) { ns.clients[idx]=mergeClientData(ns.clients[idx], cdata); imported.clientId=ns.clients[idx].id; imported.clientName=clientFullName(ns.clients[idx])||imported.clientName; }
+          else { const nc={ id:`client-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, status:'activo', ...cdata }; ns.clients.push(nc); imported.clientId=nc.id; imported.clientName=clientFullName(nc)||imported.clientName; }
         }
         ns.menuOrders.push(imported);
         appendPurchaseFromMenuOrder(ns, imported);   // crea el pedido en el módulo de Compras
@@ -2639,7 +2639,7 @@ async function startApp() {
       const idx = ns.clients.findIndex(c=>c.id===client.id);
       if (idx>-1) { ns.clients[idx] = mergeClientData(ns.clients[idx], {name, lastname, whatsapp, contact:whatsapp, address}); client = ns.clients[idx]; }
     }
-    const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id };
+    const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id, clientName: clientFullName(client) || baseOrder.clientName };
     ns.menuOrders.push(order);
     appendPurchaseFromMenuOrder(ns, order);   // crea el pedido en el módulo de Compras
     updateState(ns);
@@ -2647,6 +2647,8 @@ async function startApp() {
     showOrderConfirmed(order, name, emailSent);
     resetOrderForm();
   };
+
+  const clientFullName = c => c ? `${c.name||''} ${c.lastname||''}`.trim() : '';
 
   // Convierte un pedido del menú en un pedido del módulo de Compras (platos + cantidades)
   const appendPurchaseFromMenuOrder = (ns, mo) => {
@@ -2664,6 +2666,10 @@ async function startApp() {
       return { id:did, name:dish?dish.name:'(plato eliminado)', quantity:qty, unitCost:uc, totalCost:uc*qty };
     }).filter(it=>it.quantity>0);
     if (!items.length) return;
+    // Datos del cliente tomados del módulo de Clientes (por id o por correo)
+    let cli = null;
+    if (mo.clientId) cli = ns.clients.find(c=>c.id===mo.clientId);
+    if (!cli && mo.clientEmail) cli = ns.clients.find(c=>(c.email||'').trim().toLowerCase()===mo.clientEmail.trim().toLowerCase());
     const date = mo.date || new Date().toISOString().slice(0,10);
     let seq = (ns.lastOrderSequence[date]||0) + 1;
     ns.lastOrderSequence[date] = seq;
@@ -2672,8 +2678,8 @@ async function startApp() {
     ns.customerOrders.push({
       id:`order-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
       shortId, date,
-      clientId: mo.clientId||null,
-      clientName: mo.clientName || 'Cliente (menú)',
+      clientId: cli ? cli.id : (mo.clientId||null),
+      clientName: cli ? clientFullName(cli) : (mo.clientName || 'Cliente (menú)'),
       items,
       totalCost: items.reduce((s,i)=>s+i.totalCost,0),
       menuOrderId: mo.id, source:'menu'
