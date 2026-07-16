@@ -705,6 +705,9 @@
   </main>
 </div>
 
+<!-- Aviso flotante: faltan pedidos para domicilio gratis -->
+<div id="menu-delivery-toast" style="display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:70;background:#f97316;color:#fff;padding:0.7rem 1.2rem;border-radius:9999px;box-shadow:0 8px 20px -4px rgba(0,0,0,0.3);font-weight:600;font-size:0.9rem;max-width:90vw;text-align:center;"></div>
+
 <!-- Calculadora flotante -->
 <div id="float-calc" class="hidden">
   <div class="calc-header" id="calc-header">
@@ -2601,15 +2604,32 @@ async function startApp() {
   };
   const deliveryApplies = () => (menuDraft.count < 4);
   const deliveryAmount = () => deliveryApplies() ? (state.deliveryCost||0) : 0;
+  let _deliveryToastTimer = null;
+  const showDeliveryToast = () => {
+    const t=document.getElementById('menu-delivery-toast'); if(!t) return;
+    const dc=state.deliveryCost||0;
+    const faltan = 4 - (parseInt(menuDraft.count,10)||1);
+    if (dc>0 && faltan>0) {
+      t.textContent = `🚚 Agrega ${faltan} pedido${faltan>1?'s':''} más y obtén DOMICILIO GRATIS`;
+      t.style.display='block';
+      clearTimeout(_deliveryToastTimer);
+      _deliveryToastTimer = setTimeout(()=>{ t.style.display='none'; }, 6000);
+    } else {
+      t.style.display='none';
+    }
+  };
   const menuOrderTotal = () => menuDraft.pedidos.reduce((t,p)=>t+pedidoSubtotal(p),0) + deliveryAmount();
   const updateMenuOrderTotal = () => {
     const el=document.getElementById('menu-order-total'); if (el) el.textContent = fmtCur(menuOrderTotal());
     const note=document.getElementById('menu-order-delivery-note');
     if (note) {
-      const dc = state.deliveryCost||0;
-      if (dc<=0) { note.textContent=''; }
-      else if (deliveryApplies()) { note.textContent=`Incluye domicilio de ${fmtCur(dc)} (por pedir menos de 4). Pide 4 o más y el domicilio es GRATIS.`; note.className='text-xs text-orange-600 mt-1 font-medium'; }
-      else { note.textContent='🎉 Domicilio GRATIS por pedir 4 o más.'; note.className='text-xs text-green-600 mt-1 font-medium'; }
+      const graciasMsg = 'Gracias por hacer parte de MealGo!. Cada elección saludable cuenta; sigue construyendo hábitos que transforman tu bienestar.';
+      if ((state.deliveryCost||0) > 0 && !deliveryApplies()) {
+        note.innerHTML = `<b>🎉 ¡Has obtenido Domicilio GRATIS!</b><br>${graciasMsg}`;
+      } else {
+        note.innerHTML = graciasMsg;
+      }
+      note.className = 'text-xs text-green-600 mt-1 font-medium';
     }
   };
 
@@ -2659,7 +2679,7 @@ async function startApp() {
       if(v) v.classList.toggle('hidden', !active);
       if(t){ t.classList.toggle('btn-primary', active); t.classList.toggle('btn-secondary', !active); }
     });
-    if (which==='order') { renderPedidoBlocks(); updateMenuOrderTotal(); }
+    if (which==='order') { renderPedidoBlocks(); updateMenuOrderTotal(); showDeliveryToast(); }
     if (which==='orders') { renderMenuOrdersReceived(); }
   };
 
@@ -2932,7 +2952,7 @@ async function startApp() {
     // formulario de pedido: tipo de cliente
     on('menu-kind-new','click',()=>setMenuClientKind('nuevo'));
     on('menu-kind-existing','click',()=>setMenuClientKind('existente'));
-    on('menu-order-count','change',e=>{ menuDraft.count=e.target.value; syncDraft(); e.target.value=menuDraft.count; renderPedidoBlocks(); updateMenuOrderTotal(); });
+    on('menu-order-count','change',e=>{ menuDraft.count=e.target.value; syncDraft(); e.target.value=menuDraft.count; renderPedidoBlocks(); updateMenuOrderTotal(); showDeliveryToast(); });
     on('menu-order-pedidos','change',e=>{
       const t=e.target;
       if (t.classList.contains('menu-plato-select')) { const i=+t.dataset.pedido; if (menuDraft.pedidos[i]) menuDraft.pedidos[i].itemId=t.value; renderPedidoBlocks(); updateMenuOrderTotal(); }
@@ -2965,6 +2985,7 @@ async function startApp() {
     setupEventListeners();
     applyClientModeUI();
     renderMenuModule();
+    showDeliveryToast();
     // Menú en vivo: si el administrador cambia el menú, se refleja al instante
     if (window._fbSubscribePublicMenu) window._fbSubscribePublicMenu(p=>{
       state.menu=(p&&p.menu)||[]; state.adicionales=(p&&p.adicionales)||[]; state.deliveryCost=(p&&p.deliveryCost)||0;
