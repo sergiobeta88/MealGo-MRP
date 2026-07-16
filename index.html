@@ -596,6 +596,17 @@
       <!-- ===== Vista: Gestión del Menú (administrador) ===== -->
       <div id="menu-admin-view" class="space-y-6">
         <div class="card">
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">Costo de Domicilio</h2>
+          <p class="text-sm text-gray-500 mb-3">Se cobra al cliente cuando su pedido tiene <b>menos de 4 pedidos</b>. Con 4 o más, el domicilio es gratis.</p>
+          <div class="flex items-end gap-2">
+            <div class="w-48">
+              <label class="block text-sm font-medium text-gray-700">Costo domicilio (COP)</label>
+              <input type="number" id="delivery-cost-input" min="0" step="100" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-right font-mono">
+            </div>
+            <button type="button" id="delivery-cost-save-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary">Guardar</button>
+          </div>
+        </div>
+        <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-4">Platos Principales del Menú</h2>
           <p class="text-sm text-gray-500 mb-4">Crea cada ítem del menú con un nombre propio, elige uno o varios platos que lo componen (agrupados por tipo, con su costo) y asígnale su precio de venta al público.</p>
           <div class="p-3 bg-gray-50 rounded-md mb-4 space-y-3">
@@ -684,6 +695,7 @@
           <div>
             <p class="text-sm text-gray-500 uppercase tracking-wide font-semibold">Valor a pagar</p>
             <p id="menu-order-total" class="text-3xl font-bold text-orange-500 font-mono">$ 0</p>
+            <p id="menu-order-delivery-note" class="text-xs text-gray-500 mt-1"></p>
           </div>
           <button type="button" id="menu-order-confirm-btn" class="py-3 px-8 rounded-lg font-semibold btn-primary text-lg">Confirmar pedido</button>
         </div>
@@ -861,7 +873,7 @@ async function startApp() {
     ingredients: [], ingredientTypes: [], dishes: [], clients: [],
     customerOrders: [], savedShoppingLists: [], savedProductionPlans: [],
     executedProductions: [], lastOrderSequence: {},
-    menu: [], adicionales: [], menuOrders: [],
+    menu: [], adicionales: [], menuOrders: [], deliveryCost: 0,
   };
 
   let history = [];
@@ -907,6 +919,7 @@ async function startApp() {
   const buildPublicMenu = () => ({
     menu: (state.menu||[]).map(m=>({ id:m.id, name:m.name, price:m.price||0 })),
     adicionales: availableAdicionales().map(a=>({ dishId:a.dishId, name:adicName(a.dishId), price:a.price||0 })),
+    deliveryCost: state.deliveryCost||0,
     ts: Date.now(),
   });
   const publishPublicMenu = () => { if (!CLIENT_MODE && window._fbPublishMenu) window._fbPublishMenu(buildPublicMenu()); };
@@ -926,6 +939,7 @@ async function startApp() {
       menu:                 data.menu                 || [],
       adicionales:          data.adicionales          || [],
       menuOrders:           data.menuOrders           || [],
+      deliveryCost:         data.deliveryCost         || 0,
     };
     // migraciones
     s.ingredients.forEach(i => {
@@ -2416,6 +2430,7 @@ async function startApp() {
     renderAdicionalesChecklist();
     renderMenuMainList();
     renderMenuOrdersReceived();
+    const dEl=document.getElementById('delivery-cost-input'); if(dEl && document.activeElement!==dEl) dEl.value = state.deliveryCost||0;
     renderPedidoBlocks();
     updateMenuOrderTotal();
   };
@@ -2483,7 +2498,10 @@ async function startApp() {
       lines.push(`<div class="flex justify-between border-t border-gray-100 mt-0.5 pt-0.5"><span class="text-gray-500">Subtotal pedido ${idx+1}</span><span class="font-mono font-semibold">${fmtCur(p.subtotal)}</span></div>`);
       return `<div class="text-sm mb-2">${lines.join('')}</div>`;
     }).join('');
-    return `${det}<div class="flex justify-between border-t pt-1 mt-1 font-bold"><span class="text-gray-800">Valor a pagar total</span><span class="text-orange-500 font-mono">${fmtCur(o.total)}</span></div>`;
+    const dom = (o.deliveryCost||0) > 0
+      ? `<div class="flex justify-between text-sm text-gray-600"><span>Domicilio</span><span class="font-mono">${fmtCur(o.deliveryCost)}</span></div>`
+      : '';
+    return `${det}${dom}<div class="flex justify-between border-t pt-1 mt-1 font-bold"><span class="text-gray-800">Valor a pagar total</span><span class="text-orange-500 font-mono">${fmtCur(o.total)}</span></div>`;
   };
 
   const renderMenuOrdersReceived = () => {
@@ -2581,8 +2599,19 @@ async function startApp() {
     const extra = (p.adicionales||[]).reduce((t,a)=>t+(a.price||0),0);
     return base + extra;
   };
-  const menuOrderTotal = () => menuDraft.pedidos.reduce((t,p)=>t+pedidoSubtotal(p),0);
-  const updateMenuOrderTotal = () => { const el=document.getElementById('menu-order-total'); if (el) el.textContent = fmtCur(menuOrderTotal()); };
+  const deliveryApplies = () => (menuDraft.count < 4);
+  const deliveryAmount = () => deliveryApplies() ? (state.deliveryCost||0) : 0;
+  const menuOrderTotal = () => menuDraft.pedidos.reduce((t,p)=>t+pedidoSubtotal(p),0) + deliveryAmount();
+  const updateMenuOrderTotal = () => {
+    const el=document.getElementById('menu-order-total'); if (el) el.textContent = fmtCur(menuOrderTotal());
+    const note=document.getElementById('menu-order-delivery-note');
+    if (note) {
+      const dc = state.deliveryCost||0;
+      if (dc<=0) { note.textContent=''; }
+      else if (deliveryApplies()) { note.textContent=`Incluye domicilio de ${fmtCur(dc)} (por pedir menos de 4). Pide 4 o más y el domicilio es GRATIS.`; note.className='text-xs text-orange-600 mt-1 font-medium'; }
+      else { note.textContent='🎉 Domicilio GRATIS por pedir 4 o más.'; note.className='text-xs text-green-600 mt-1 font-medium'; }
+    }
+  };
 
   const syncDraft = () => {
     const n = Math.max(1, parseInt(menuDraft.count,10) || 1);
@@ -2693,7 +2722,8 @@ async function startApp() {
         adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };    });
     const baseOrder = { shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
       clientName:`${name} ${lastname}`.trim(), clientFirstName:name, clientLastName:lastname,
-      clientEmail:email, clientPhone:whatsapp, clientAddress:address, clientKind:menuClientKind, pedidos, total };
+      clientEmail:email, clientPhone:whatsapp, clientAddress:address, clientKind:menuClientKind,
+      deliveryCost: deliveryAmount(), pedidos, total };
 
     if (CLIENT_MODE) {
       // El cliente NO puede escribir en la base del administrador: su pedido va a la zona pública
@@ -2792,10 +2822,11 @@ async function startApp() {
     if (!EMAILJS_READY()) { lastEmailError='EmailJS no configurado (faltan credenciales)'; console.error(lastEmailError); return false; }
     if (!order.clientEmail) { lastEmailError='El pedido no tiene correo'; return false; }
     try {
-      const resumen = order.pedidos.map((p,i)=>{
+      let resumen = order.pedidos.map((p,i)=>{
         const adis=(p.adicionales||[]).map(a=>`    + ${a.name}: ${fmtCur(a.price)}`).join('\n');
         return `Pedido ${i+1}: ${p.itemName} - ${fmtCur(p.itemPrice)}${adis?'\n'+adis:''}\n    Subtotal: ${fmtCur(p.subtotal)}`;
       }).join('\n\n');
+      if ((order.deliveryCost||0) > 0) resumen += `\n\nDomicilio: ${fmtCur(order.deliveryCost)}`;
       const params = {
         to_email:      order.clientEmail,
         email:         order.clientEmail,   // alias por si la plantilla usa {{email}}
@@ -2850,6 +2881,11 @@ async function startApp() {
   const setupMenuModule = () => {
     const on = (id,ev,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener(ev,fn); };
     on('menu-tab-admin','click',()=>switchMenuTab('admin'));
+    on('delivery-cost-save-btn','click',()=>{
+      const v=parseFloat(document.getElementById('delivery-cost-input').value)||0;
+      const ns=JSON.parse(JSON.stringify(state)); ns.deliveryCost=v; updateState(ns);
+      const b=document.getElementById('delivery-cost-save-btn'); const old=b.textContent; b.textContent='Guardado ✓'; setTimeout(()=>{ b.textContent=old; },1500);
+    });
     on('menu-tab-order','click',()=>switchMenuTab('order'));
     on('menu-tab-orders','click',()=>switchMenuTab('orders'));
     // checklist del constructor de ítems (con costo en vivo)
@@ -2924,13 +2960,14 @@ async function startApp() {
     const pub = window._fbLoadPublicMenu ? await window._fbLoadPublicMenu() : null;
     state.menu = (pub && pub.menu) || [];
     state.adicionales = (pub && pub.adicionales) || [];
+    state.deliveryCost = (pub && pub.deliveryCost) || 0;
     document.getElementById('sync-overlay').style.display='none';
     setupEventListeners();
     applyClientModeUI();
     renderMenuModule();
     // Menú en vivo: si el administrador cambia el menú, se refleja al instante
     if (window._fbSubscribePublicMenu) window._fbSubscribePublicMenu(p=>{
-      state.menu=(p&&p.menu)||[]; state.adicionales=(p&&p.adicionales)||[];
+      state.menu=(p&&p.menu)||[]; state.adicionales=(p&&p.adicionales)||[]; state.deliveryCost=(p&&p.deliveryCost)||0;
       renderPedidoBlocks(); updateMenuOrderTotal();
     });
   };
