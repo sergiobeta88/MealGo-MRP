@@ -189,6 +189,11 @@
       #float-calc .calc-pad button.eq { background:#f97316; color:#fff; font-weight:700; }
       #float-calc .calc-pad button.eq:hover { background:#ea6c0a; }
       #float-calc .calc-pad button.fn { background:#e5e7eb; color:#374151; font-weight:600; }
+
+      /* ── Sombreado de los campos para que contrasten con el fondo blanco ── */
+      input, select, textarea { background-color: #e6e9ef; }
+      input[type="checkbox"], input[type="radio"], input[type="file"] { background-color: initial; }
+      input:focus, select:focus, textarea:focus { background-color: #ffffff; }
     </style>
 </head>
 <body class="antialiased">
@@ -708,7 +713,7 @@
             </div>
             <div class="mt-4 max-w-xs">
               <label class="block text-sm font-medium text-gray-700">¿Cuántos pedidos deseas?</label>
-              <input type="number" id="menu-order-count" min="1" value="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+              <input type="number" id="menu-order-count" min="1" placeholder="Escribe la cantidad" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
             </div>
             <div id="menu-order-pedidos" class="space-y-4 mt-4"></div>
           </div>
@@ -2449,7 +2454,7 @@ async function startApp() {
   // ══════════════════════════════════
   //   MÓDULO MENÚ Y PEDIDOS
   // ══════════════════════════════════
-  let menuDraft = { count: 1, pedidos: [ { itemId: '', adicionales: [] } ] };
+  let menuDraft = { count: '', pedidos: [] };  // count vacío = aún no elige cantidad
   let menuBuilder = { dishIds: [] };   // platos seleccionados para el nuevo ítem del menú
 
   const dishCostById = id => { const d=state.dishes.find(x=>x.id===id); return d?calculateDishCost(d):0; };
@@ -2640,7 +2645,8 @@ async function startApp() {
     const extra = (p.adicionales||[]).reduce((t,a)=>t+(a.price||0),0);
     return base + extra;
   };
-  const deliveryApplies = () => (menuDraft.count < 4);
+  const countChosen = () => { const n=parseInt(menuDraft.count,10); return !!n && n>=1; };
+  const deliveryApplies = () => { const n=parseInt(menuDraft.count,10); return !!n && n>=1 && n<4; };
   const deliveryAmount = () => deliveryApplies() ? (state.deliveryCost||0) : 0;
   const localToday = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const localTime = () => { const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
@@ -2684,7 +2690,8 @@ async function startApp() {
   const showDeliveryToast = () => {
     const t=document.getElementById('menu-delivery-toast'); if(!t) return;
     const dc=state.deliveryCost||0;
-    const faltan = 4 - (parseInt(menuDraft.count,10)||1);
+    const n=parseInt(menuDraft.count,10);
+    const faltan = (n && n>=1) ? (4-n) : 0;
     if (dc>0 && faltan>0) {
       t.textContent = `🚚 Agrega ${faltan} pedido${faltan>1?'s':''} más y obtén DOMICILIO GRATIS`;
       t.style.display='block';
@@ -2694,23 +2701,28 @@ async function startApp() {
       t.style.display='none';
     }
   };
-  const menuOrderTotal = () => menuDraft.pedidos.reduce((t,p)=>t+pedidoSubtotal(p),0) + deliveryAmount();
+  const menuOrderTotal = () => countChosen() ? (menuDraft.pedidos.reduce((t,p)=>t+pedidoSubtotal(p),0) + deliveryAmount()) : 0;
   const updateMenuOrderTotal = () => {
     const el=document.getElementById('menu-order-total'); if (el) el.textContent = fmtCur(menuOrderTotal());
     const note=document.getElementById('menu-order-delivery-note');
     if (note) {
-      const graciasMsg = 'Gracias por hacer parte de MealGo!. Cada elección saludable cuenta; sigue construyendo hábitos que transforman tu bienestar.';
-      if ((state.deliveryCost||0) > 0 && !deliveryApplies()) {
-        note.innerHTML = `<b>🎉 ¡Has obtenido Domicilio GRATIS!</b><br>${graciasMsg}`;
-      } else {
-        note.innerHTML = graciasMsg;
+      if (!countChosen()) { note.innerHTML=''; }
+      else {
+        const graciasMsg = 'Gracias por hacer parte de MealGo!. Cada elección saludable cuenta; sigue construyendo hábitos que transforman tu bienestar.';
+        if ((state.deliveryCost||0) > 0 && !deliveryApplies()) {
+          note.innerHTML = `<b>🎉 ¡Has obtenido Domicilio GRATIS!</b><br>${graciasMsg}`;
+        } else {
+          note.innerHTML = graciasMsg;
+        }
+        note.className = 'text-xs text-green-600 mt-1 font-medium';
       }
-      note.className = 'text-xs text-green-600 mt-1 font-medium';
     }
   };
 
   const syncDraft = () => {
-    const n = Math.max(1, parseInt(menuDraft.count,10) || 1);
+    const raw = parseInt(menuDraft.count,10);
+    if (!raw || raw < 1) { menuDraft.pedidos = []; return; }  // aún no elige cantidad
+    const n = raw;
     menuDraft.count = n;
     while (menuDraft.pedidos.length < n) menuDraft.pedidos.push({ itemId:'', adicionales:[] });
     if (menuDraft.pedidos.length > n) menuDraft.pedidos.length = n;
@@ -2730,6 +2742,10 @@ async function startApp() {
       return;
     }
     syncDraft();
+    if (!countChosen()) {
+      cont.innerHTML = '<p class="text-gray-500 italic p-4 bg-gray-50 rounded-lg">Indica cuántos pedidos deseas para continuar.</p>';
+      return;
+    }
     cont.innerHTML = menuDraft.pedidos.map((p,i)=>{
       const opts = `<option value="">— Selecciona un plato —</option>` + state.menu.map(m=>`<option value="${m.id}" ${p.itemId===m.id?'selected':''}>${m.name} — ${fmtCur(m.price)}</option>`).join('');
       const adx = availableAdicionales();
@@ -2810,6 +2826,7 @@ async function startApp() {
       }
     }
     syncDraft();
+    if (!countChosen() || !menuDraft.pedidos.length) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Indica cuántos pedidos deseas realizar.</p>', false); return; }
     if (menuDraft.pedidos.some(p=>!p.itemId)) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Selecciona el plato principal en todos los pedidos.</p>', false); return; }
     const total = menuOrderTotal();
     const pedidos = menuDraft.pedidos.map(p=>{
@@ -2966,13 +2983,14 @@ async function startApp() {
       </div>`, true);
   };
   const resetOrderForm = () => {
-    menuDraft = { count:1, pedidos:[{itemId:'',adicionales:[]}] };
+    menuDraft = { count:'', pedidos:[] };
     ['menu-order-email','menu-order-name','menu-order-lastname','menu-order-whatsapp','menu-order-address'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-    const cc=document.getElementById('menu-order-count'); if(cc) cc.value='1';
+    const cc=document.getElementById('menu-order-count'); if(cc) cc.value='';
     menuClientKind=null;
     document.getElementById('menu-order-fields')?.classList.add('hidden');
     ['menu-kind-new','menu-kind-existing'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.classList.add('btn-secondary'); b.classList.remove('btn-primary'); } });
     renderPedidoBlocks(); updateMenuOrderTotal();
+    const t=document.getElementById('menu-delivery-toast'); if(t) t.style.display='none';
   };
 
   const setupMenuModule = () => {
