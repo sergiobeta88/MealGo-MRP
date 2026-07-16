@@ -607,6 +607,23 @@
           </div>
         </div>
         <div class="card">
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">Recepción de Pedidos (fechas)</h2>
+          <p class="text-sm text-gray-500 mb-3">Define entre qué fechas y horas el cliente puede hacer pedidos por el link. Fuera de ese rango, verá el pedido cerrado. Deja en blanco para permitir pedidos siempre.</p>
+          <div class="flex flex-wrap items-end gap-2">
+            <div><label class="block text-sm font-medium text-gray-700">Desde (fecha)</label>
+              <input type="date" id="order-window-from" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Hasta (fecha)</label>
+              <input type="date" id="order-window-to" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Desde (hora)</label>
+              <input type="time" id="order-window-time-from" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <div><label class="block text-sm font-medium text-gray-700">Hasta (hora)</label>
+              <input type="time" id="order-window-time-to" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></div>
+            <button type="button" id="order-window-save-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary">Guardar</button>
+            <button type="button" id="order-window-clear-btn" class="py-2 px-4 rounded-lg font-semibold text-blue-600">Sin límite</button>
+          </div>
+          <p id="order-window-status" class="text-xs mt-2"></p>
+        </div>
+        <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-4">Platos Principales del Menú</h2>
           <p class="text-sm text-gray-500 mb-4">Crea cada ítem del menú con un nombre propio, elige uno o varios platos que lo componen (agrupados por tipo, con su costo) y asígnale su precio de venta al público.</p>
           <div class="p-3 bg-gray-50 rounded-md mb-4 space-y-3">
@@ -659,6 +676,11 @@
 
       <!-- ===== Vista: Formulario de Pedido (cliente) ===== -->
       <div id="menu-order-view" class="hidden space-y-6">
+        <div id="menu-order-closed" class="hidden card border-2 border-red-300 bg-red-50 text-center">
+          <h2 class="text-2xl font-bold text-red-700 mb-2">Recepción de pedidos cerrada</h2>
+          <p id="menu-order-closed-msg" class="text-gray-700"></p>
+        </div>
+        <div id="menu-order-content" class="space-y-6">
         <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-1">Haz tu Pedido</h2>
           <p class="text-sm text-gray-500 mb-4">Cuéntanos si es tu primer pedido o si ya eres cliente.</p>
@@ -700,6 +722,7 @@
           <button type="button" id="menu-order-confirm-btn" class="py-3 px-8 rounded-lg font-semibold btn-primary text-lg">Confirmar pedido</button>
         </div>
         <div id="menu-order-confirmation" class="hidden card border-2 border-green-400 bg-green-50"></div>
+        </div>
       </div>
     </section>
   </main>
@@ -876,7 +899,7 @@ async function startApp() {
     ingredients: [], ingredientTypes: [], dishes: [], clients: [],
     customerOrders: [], savedShoppingLists: [], savedProductionPlans: [],
     executedProductions: [], lastOrderSequence: {},
-    menu: [], adicionales: [], menuOrders: [], deliveryCost: 0,
+    menu: [], adicionales: [], menuOrders: [], deliveryCost: 0, orderFrom: '', orderTo: '', orderTimeFrom: '', orderTimeTo: '',
   };
 
   let history = [];
@@ -923,6 +946,10 @@ async function startApp() {
     menu: (state.menu||[]).map(m=>({ id:m.id, name:m.name, price:m.price||0 })),
     adicionales: availableAdicionales().map(a=>({ dishId:a.dishId, name:adicName(a.dishId), price:a.price||0 })),
     deliveryCost: state.deliveryCost||0,
+    orderFrom: state.orderFrom||'',
+    orderTo: state.orderTo||'',
+    orderTimeFrom: state.orderTimeFrom||'',
+    orderTimeTo: state.orderTimeTo||'',
     ts: Date.now(),
   });
   const publishPublicMenu = () => { if (!CLIENT_MODE && window._fbPublishMenu) window._fbPublishMenu(buildPublicMenu()); };
@@ -943,6 +970,10 @@ async function startApp() {
       adicionales:          data.adicionales          || [],
       menuOrders:           data.menuOrders           || [],
       deliveryCost:         data.deliveryCost         || 0,
+      orderFrom:            data.orderFrom            || '',
+      orderTo:              data.orderTo              || '',
+      orderTimeFrom:        data.orderTimeFrom        || '',
+      orderTimeTo:          data.orderTimeTo          || '',
     };
     // migraciones
     s.ingredients.forEach(i => {
@@ -2434,6 +2465,13 @@ async function startApp() {
     renderMenuMainList();
     renderMenuOrdersReceived();
     const dEl=document.getElementById('delivery-cost-input'); if(dEl && document.activeElement!==dEl) dEl.value = state.deliveryCost||0;
+    const wf=document.getElementById('order-window-from'); if(wf && document.activeElement!==wf) wf.value = state.orderFrom||'';
+    const wt=document.getElementById('order-window-to'); if(wt && document.activeElement!==wt) wt.value = state.orderTo||'';
+    const wtf=document.getElementById('order-window-time-from'); if(wtf && document.activeElement!==wtf) wtf.value = state.orderTimeFrom||'';
+    const wtt=document.getElementById('order-window-time-to'); if(wtt && document.activeElement!==wtt) wtt.value = state.orderTimeTo||'';
+    const ws=document.getElementById('order-window-status');
+    if(ws){ if(!(state.orderFrom||state.orderTo||state.orderTimeFrom||state.orderTimeTo)) { ws.textContent='Pedidos habilitados siempre (sin límite de fecha/hora).'; ws.className='text-xs mt-2 text-gray-500'; }
+      else { ws.textContent = orderingOpen()?'✅ Recepción ABIERTA ahora.':'⛔ Recepción CERRADA ahora.'; ws.className='text-xs mt-2 font-medium '+(orderingOpen()?'text-green-600':'text-red-600'); } }
     renderPedidoBlocks();
     updateMenuOrderTotal();
   };
@@ -2604,6 +2642,44 @@ async function startApp() {
   };
   const deliveryApplies = () => (menuDraft.count < 4);
   const deliveryAmount = () => deliveryApplies() ? (state.deliveryCost||0) : 0;
+  const localToday = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  const localTime = () => { const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+  const orderingOpen = () => {
+    const t=localToday(), f=state.orderFrom||'', to=state.orderTo||'';
+    if (f && t < f) return false;
+    if (to && t > to) return false;
+    const tf=state.orderTimeFrom||'', tt=state.orderTimeTo||'';
+    if (tf || tt) {
+      const now=localTime();
+      if (tf && tt) {
+        if (tf <= tt) { if (now < tf || now > tt) return false; }        // mismo día
+        else { if (now < tf && now > tt) return false; }                 // cruza medianoche
+      } else if (tf) { if (now < tf) return false; }
+      else if (tt) { if (now > tt) return false; }
+    }
+    return true;
+  };
+  const orderWindowText = () => {
+    const f=state.orderFrom, to=state.orderTo, tf=state.orderTimeFrom, tt=state.orderTimeTo;
+    let m='';
+    if (f && to) m=`del ${f} al ${to}`; else if (f) m=`desde el ${f}`; else if (to) m=`hasta el ${to}`;
+    let h='';
+    if (tf && tt) h=`de ${tf} a ${tt}`; else if (tf) h=`desde las ${tf}`; else if (tt) h=`hasta las ${tt}`;
+    return [m, h].filter(Boolean).join(', ');
+  };
+  const applyOrderingWindowUI = () => {
+    if (!CLIENT_MODE) return;
+    const closed=document.getElementById('menu-order-closed');
+    const content=document.getElementById('menu-order-content');
+    const msg=document.getElementById('menu-order-closed-msg');
+    const open=orderingOpen();
+    if (closed) closed.classList.toggle('hidden', open);
+    if (content) content.classList.toggle('hidden', !open);
+    if (!open && msg) {
+      const w=orderWindowText();
+      msg.textContent = w ? `La recepción de pedidos está disponible ${w}. ¡Vuelve pronto!` : 'La recepción de pedidos no está disponible en este momento.';
+    }
+  };
   let _deliveryToastTimer = null;
   const showDeliveryToast = () => {
     const t=document.getElementById('menu-delivery-toast'); if(!t) return;
@@ -2713,6 +2789,7 @@ async function startApp() {
   };
 
   const handleConfirmMenuOrder = async () => {
+    if (CLIENT_MODE && !orderingOpen()) { applyOrderingWindowUI(); showMenuOrderMsg('<p class="text-red-700 font-semibold">La recepción de pedidos está cerrada en este momento.</p>', false); return; }
     if (!state.menu.length) { showMenuOrderMsg('<p class="text-red-700 font-semibold">El menú no tiene ítems disponibles.</p>', false); return; }
     if (!menuClientKind) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Indica si eres cliente nuevo o si ya eres cliente.</p>', false); return; }
     const email=(document.getElementById('menu-order-email').value||'').trim();
@@ -2906,6 +2983,18 @@ async function startApp() {
       const ns=JSON.parse(JSON.stringify(state)); ns.deliveryCost=v; updateState(ns);
       const b=document.getElementById('delivery-cost-save-btn'); const old=b.textContent; b.textContent='Guardado ✓'; setTimeout(()=>{ b.textContent=old; },1500);
     });
+    on('order-window-save-btn','click',()=>{
+      const f=document.getElementById('order-window-from').value||'';
+      const to=document.getElementById('order-window-to').value||'';
+      const tf=document.getElementById('order-window-time-from').value||'';
+      const tt=document.getElementById('order-window-time-to').value||'';
+      if (f && to && to < f) { const s=document.getElementById('order-window-status'); if(s){ s.textContent='La fecha "Hasta" no puede ser anterior a "Desde".'; s.className='text-xs mt-2 text-red-600 font-medium'; } return; }
+      const ns=JSON.parse(JSON.stringify(state)); ns.orderFrom=f; ns.orderTo=to; ns.orderTimeFrom=tf; ns.orderTimeTo=tt; updateState(ns);
+      const b=document.getElementById('order-window-save-btn'); const old=b.textContent; b.textContent='Guardado ✓'; setTimeout(()=>{ b.textContent=old; },1500);
+    });
+    on('order-window-clear-btn','click',()=>{
+      const ns=JSON.parse(JSON.stringify(state)); ns.orderFrom=''; ns.orderTo=''; ns.orderTimeFrom=''; ns.orderTimeTo=''; updateState(ns);
+    });
     on('menu-tab-order','click',()=>switchMenuTab('order'));
     on('menu-tab-orders','click',()=>switchMenuTab('orders'));
     // checklist del constructor de ítems (con costo en vivo)
@@ -2981,16 +3070,24 @@ async function startApp() {
     state.menu = (pub && pub.menu) || [];
     state.adicionales = (pub && pub.adicionales) || [];
     state.deliveryCost = (pub && pub.deliveryCost) || 0;
+    state.orderFrom = (pub && pub.orderFrom) || '';
+    state.orderTo = (pub && pub.orderTo) || '';
+    state.orderTimeFrom = (pub && pub.orderTimeFrom) || '';
+    state.orderTimeTo = (pub && pub.orderTimeTo) || '';
     document.getElementById('sync-overlay').style.display='none';
     setupEventListeners();
     applyClientModeUI();
     renderMenuModule();
+    applyOrderingWindowUI();
     showDeliveryToast();
     // Menú en vivo: si el administrador cambia el menú, se refleja al instante
     if (window._fbSubscribePublicMenu) window._fbSubscribePublicMenu(p=>{
       state.menu=(p&&p.menu)||[]; state.adicionales=(p&&p.adicionales)||[]; state.deliveryCost=(p&&p.deliveryCost)||0;
-      renderPedidoBlocks(); updateMenuOrderTotal();
+      state.orderFrom=(p&&p.orderFrom)||''; state.orderTo=(p&&p.orderTo)||'';
+      state.orderTimeFrom=(p&&p.orderTimeFrom)||''; state.orderTimeTo=(p&&p.orderTimeTo)||'';
+      renderPedidoBlocks(); updateMenuOrderTotal(); applyOrderingWindowUI();
     });
+    setInterval(applyOrderingWindowUI, 60000); // revisa cada minuto por si pasa la hora límite
   };
 
   const init = async () => {
