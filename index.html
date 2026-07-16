@@ -91,6 +91,12 @@
         window._fbSubscribeOrders = (cb) => { try { onValue(ref(db,'mealgo/public/orders'), s=>cb(s.exists()?s.val():{})); return true; } catch(e){ console.error('sub orders',e); return false; } };
         window._fbDeleteOrder     = (id) => remove(ref(db, 'mealgo/public/orders/'+id)).then(()=>true).catch(e=>{console.error('del order',e);return false;});
 
+        // ── Escrituras por elemento (evitan pisar cambios entre sesiones) ──
+        window._fbSetPath       = (p,v) => set(ref(db,p),v).then(()=>true).catch(e=>{console.error('setPath',p,e);return false;});
+        window._fbRemovePath    = (p)   => remove(ref(db,p)).then(()=>true).catch(e=>{console.error('rmPath',p,e);return false;});
+        window._fbGetPath       = async (p) => { try{ const s=await get(ref(db,p)); return s.exists()?s.val():null; }catch(e){ console.error('getPath',p,e); return null; } };
+        window._fbSubscribePath = (p,cb) => { try{ onValue(ref(db,p), s=>cb(s.exists()?s.val():null)); return true; }catch(e){ console.error('subPath',p,e); return false; } };
+
         window._firebaseReady = true;
         log('🚀 Firebase listo — disparando evento');
       } catch(e) {
@@ -887,7 +893,7 @@ async function startApp() {
     _saveTimer = setTimeout(async () => {
       setStatus('saving');
       if (window._fbSave) {
-        // Marcamos el autor para que el resto de equipos sepan que el cambio no es suyo
+        // El nodo 'mealgo/adicionales' es la fuente principal; aquí van también como respaldo
         const ok = await window._fbSave({ ...state, _meta: { writer: CLIENT_ID, ts: Date.now() } });
         setStatus(ok ? 'connected' : 'error');
         publishPublicMenu(); // publica el menú visible para los clientes
@@ -974,7 +980,9 @@ async function startApp() {
     // Si el cambio lo hicimos nosotros mismos, es solo el eco de nuestro guardado
     if (data._meta && data._meta.writer === CLIENT_ID) return;
     // Cambio hecho por otro equipo: actualizamos la pantalla sin volver a guardar
+    const keepAdic = state.adicionales;   // gestionados por su propio nodo, no por el bloque
     state = buildStateFromData(data);
+    state.adicionales = keepAdic || [];
     history = []; // el historial local de "deshacer" ya no es coherente con el cambio externo
     renderAll();
     setStatus('connected');
@@ -982,6 +990,57 @@ async function startApp() {
 
   const subscribeToRemoteChanges = () => {
     if (window._fbSubscribe) window._fbSubscribe(applyRemoteState);
+  };
+
+  // ── Adicionales: se guardan por plato en su propio nodo (no se pisan entre sesiones) ──
+  const ADIC_PATH = 'mealgo/adicionales';
+  const syncAdicionalesFromNode = obj => {
+    state.adicionales = obj
+      ? Object.entries(obj).map(([dishId,v])=>({ dishId, price:(v&&v.price)||0, available: v ? (v.available!==false) : true }))
+      : [];
+  };
+  const saveAdicional = (dishId, data) => {
+    if (window._fbSetPath) return window._fbSetPath(`${ADIC_PATH}/${dishId}`, { price:data.price||0, available:data.available!==false });
+    return Promise.resolve(false);
+  };
+  const initAdicionalesSync = async () => {
+    if (!window._fbGetPath) return; // sin Firebase: se queda con lo que haya en memoria
+    const node = await window._fbGetPath(ADIC_PATH);
+    if (node) {
+      syncAdicionalesFromNode(node);
+    } else if (state.adicionales && state.adicionales.length) {
+      // migración: pasar los adicionales del bloque antiguo al nodo nuevo
+      const mig = {}; state.adicionales.forEach(a=>{ mig[a.dishId]={ price:a.price||0, available:a.available!==false }; });
+      if (window._fbSetPath) await window._fbSetPath(ADIC_PATH, mig);
+    } else {
+      state.adicionales = [];
+    }
+    if (window._fbSubscribePath) window._fbSubscribePath(ADIC_PATH, obj=>{
+      syncAdicionalesFromNode(obj);
+      renderMenuModule();
+      publishPublicMenu(); // el menú del cliente refleja los cambios
+    });
+  };
+
+  // ── Casillas del plan de producción: se guardan por casilla en su propio nodo ──
+  const PC_PATH = 'mealgo/prodChecks';
+  const hashKey = s => { let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return 'k'+(h>>>0).toString(36); };
+  const saveProdCheck = (key, checked) => {
+    if (!window._fbSetPath) return;
+    if (checked) window._fbSetPath(`${PC_PATH}/${hashKey(key)}`, key);
+    else if (window._fbRemovePath) window._fbRemovePath(`${PC_PATH}/${hashKey(key)}`);
+  };
+  const subscribeProdChecks = () => {
+    if (CLIENT_MODE || !window._fbSubscribePath) return;
+    window._fbSubscribePath(PC_PATH, obj=>{
+      const next={}; if(obj) Object.values(obj).forEach(orig=>{ if(orig) next[orig]=true; });
+      // ¿cambió algo respecto a lo que ya tenemos? (evita re-render innecesario en el propio eco)
+      const curKeys=Object.keys(prodChecks), nxtKeys=Object.keys(next);
+      const same = curKeys.length===nxtKeys.length && nxtKeys.every(k=>prodChecks[k]);
+      Object.keys(prodChecks).forEach(k=>delete prodChecks[k]);
+      Object.assign(prodChecks, next);
+      if (!same) { try { renderProductionPlanView(); } catch(_){} }
+    });
   };
 
   const updateState = (newState, recordHistory = true) => {
@@ -1079,6 +1138,7 @@ async function startApp() {
       const cb=e.target;
       if (cb.classList && cb.classList.contains('prod-check') && cb.dataset.ck){
         if (cb.checked) prodChecks[cb.dataset.ck]=true; else delete prodChecks[cb.dataset.ck];
+        saveProdCheck(cb.dataset.ck, cb.checked);   // se sincroniza entre sesiones
       }
     });
     document.getElementById('export-data-btn').addEventListener('click', exportData);
@@ -2805,24 +2865,23 @@ async function startApp() {
     });
     on('menu-main-list','change',e=>{ if(e.target.classList.contains('menu-price-input')){ const id=e.target.dataset.itemid, ns=JSON.parse(JSON.stringify(state)); const m=ns.menu.find(x=>x.id===id); if(m){ m.price=parseFloat(e.target.value)||0; updateState(ns);} } });
     on('menu-main-list','click',e=>{ if(e.target.classList.contains('menu-remove-btn')){ const id=e.target.dataset.itemid, ns=JSON.parse(JSON.stringify(state)); ns.menu=ns.menu.filter(x=>x.id!==id); updateState(ns);} });
-    // adicionales: marcar plato + precio (sin nombre)
+    // adicionales: marcar plato + precio (guardado por elemento, se sincroniza sin pisar)
     on('adicionales-checklist','change',e=>{
       const t=e.target, id=t.dataset.dishid; if(!id) return;
-      const ns=JSON.parse(JSON.stringify(state));
+      let a=state.adicionales.find(x=>x.dishId===id);
       if(t.classList.contains('adic-check')){
-        let a=ns.adicionales.find(x=>x.dishId===id);
-        if(t.checked){
-          if(a){ a.available=true; }
-          else { const priceEl=document.querySelector(`.adic-price[data-dishid="${id}"]`); const price=priceEl?(parseFloat(priceEl.value)||0):0; ns.adicionales.push({dishId:id, price, available:true}); }
-        } else {
-          if(a){ a.available=false; }   // se conserva el precio para cuando se vuelva a marcar
-        }
-        updateState(ns);
+        const available=t.checked;
+        const priceEl=document.querySelector(`.adic-price[data-dishid="${id}"]`);
+        const price = a ? a.price : (priceEl?(parseFloat(priceEl.value)||0):0);
+        if(a){ a.available=available; a.price=price; } else { state.adicionales.push({dishId:id, price, available}); }
+        renderMenuModule(); publishPublicMenu();
+        saveAdicional(id, {price, available});
       } else if(t.classList.contains('adic-price')){
-        let a=ns.adicionales.find(x=>x.dishId===id);
-        if(!a){ a={dishId:id, price:0, available:false}; ns.adicionales.push(a); }
-        a.price=parseFloat(t.value)||0;
-        updateState(ns);
+        const price=parseFloat(t.value)||0;
+        const available = a ? (a.available!==false) : false;
+        if(a){ a.price=price; } else { state.adicionales.push({dishId:id, price, available}); }
+        renderMenuModule(); publishPublicMenu();
+        saveAdicional(id, {price, available});
       }
     });
     // pedidos recibidos: eliminar
@@ -2880,6 +2939,7 @@ async function startApp() {
     document.getElementById('sync-overlay').style.display='flex';
     if (CLIENT_MODE) { await loadLogoForPDF().catch(()=>{}); await initClient(); return; }
     await Promise.all([loadState(), loadLogoForPDF()]);
+    await initAdicionalesSync();   // adicionales desde su propio nodo (por elemento)
     document.getElementById('sync-overlay').style.display='none';
     setupEventListeners();
     const today=new Date().toISOString().slice(0,10);
@@ -2892,6 +2952,7 @@ async function startApp() {
     navigateTo('dashboard');
     subscribeToRemoteChanges(); // cambios de otros equipos llegan solos
     subscribeClientOrders();    // pedidos que dejan los clientes llegan solos
+    subscribeProdChecks();      // casillas de producción sincronizadas entre sesiones
     publishPublicMenu();        // publica el menú actual para los clientes
   };
 
