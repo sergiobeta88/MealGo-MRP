@@ -2586,7 +2586,7 @@ async function startApp() {
       const itemName=p.itemName||p.dishName||'(plato)';
       const itemPrice=(p.itemPrice!=null?p.itemPrice:(p.dishPrice!=null?p.dishPrice:0));
       const descNote = p.discountApplied
-        ? ` <span class="text-green-600 text-xs">(−3.58%${p.itemPriceOriginal?` antes ${fmtCur(p.itemPriceOriginal)}`:''})</span>`
+        ? ` <span class="text-green-600 text-xs">${p.itemPriceOriginal?`(antes ${fmtCur(p.itemPriceOriginal)})`:''}</span>`
         : '';
       const lines=[`<div class="flex justify-between"><span class="font-medium text-gray-800">${itemName}${descNote}</span><span class="font-mono">${fmtCur(itemPrice)}</span></div>`];
       (p.adicionales||[]).forEach(a=>lines.push(`<div class="flex justify-between text-gray-500 pl-3"><span>+ ${a.name}</span><span class="font-mono">${fmtCur(a.price)}</span></div>`));
