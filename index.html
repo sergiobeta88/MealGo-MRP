@@ -2585,7 +2585,10 @@ async function startApp() {
     const det=o.pedidos.map((p,idx)=>{
       const itemName=p.itemName||p.dishName||'(plato)';
       const itemPrice=(p.itemPrice!=null?p.itemPrice:(p.dishPrice!=null?p.dishPrice:0));
-      const lines=[`<div class="flex justify-between"><span class="font-medium text-gray-800">${itemName}</span><span class="font-mono">${fmtCur(itemPrice)}</span></div>`];
+      const descNote = p.discountApplied
+        ? ` <span class="text-green-600 text-xs">(−3.58%${p.itemPriceOriginal?` antes ${fmtCur(p.itemPriceOriginal)}`:''})</span>`
+        : '';
+      const lines=[`<div class="flex justify-between"><span class="font-medium text-gray-800">${itemName}${descNote}</span><span class="font-mono">${fmtCur(itemPrice)}</span></div>`];
       (p.adicionales||[]).forEach(a=>lines.push(`<div class="flex justify-between text-gray-500 pl-3"><span>+ ${a.name}</span><span class="font-mono">${fmtCur(a.price)}</span></div>`));
       lines.push(`<div class="flex justify-between border-t border-gray-100 mt-0.5 pt-0.5"><span class="text-gray-500">Subtotal pedido ${idx+1}</span><span class="font-mono font-semibold">${fmtCur(p.subtotal)}</span></div>`);
       return `<div class="text-sm mb-2">${lines.join('')}</div>`;
@@ -2685,11 +2688,21 @@ async function startApp() {
   };
 
   // ---- Formulario de pedido (cliente): SOLO precios de venta ----
-  const pedidoSubtotal = p => {
+  const PLATO_DISCOUNT_RATE = 0.0358;  // 3.58%
+  // El descuento aplica solo si el cliente quitó algún componente Y agregó algún adicional
+  const pedidoDiscountApplies = p => {
+    const hasRemoved = Array.isArray(p.excluded) && p.excluded.length > 0;
+    const hasAdicion = Array.isArray(p.adicionales) && p.adicionales.length > 0;
+    return hasRemoved && hasAdicion;
+  };
+  const pedidoItemPrice = p => {
     const m = state.menu.find(x=>x.id===p.itemId);
     const base = m ? (m.price||0) : 0;
+    return pedidoDiscountApplies(p) ? Math.round(base * (1 - PLATO_DISCOUNT_RATE)) : base;
+  };
+  const pedidoSubtotal = p => {
     const extra = (p.adicionales||[]).reduce((t,a)=>t+(a.price||0),0);
-    return base + extra;
+    return pedidoItemPrice(p) + extra;
   };
   const countChosen = () => { const n=parseInt(menuDraft.count,10); return !!n && n>=1; };
   const deliveryApplies = () => { const n=parseInt(menuDraft.count,10); return !!n && n>=1 && n<4; };
@@ -2910,7 +2923,9 @@ async function startApp() {
     const total = menuOrderTotal();
     const pedidos = menuDraft.pedidos.map(p=>{
       const m=state.menu.find(x=>x.id===p.itemId);
-      return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:m?(m.price||0):0,
+      const disc = pedidoDiscountApplies(p);
+      return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:pedidoItemPrice(p),
+        itemPriceOriginal:m?(m.price||0):0, discountApplied:disc,
         itemDishIds: effectivePedidoDishIds(p, m),
         adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };    });
     const baseOrder = { shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
@@ -3161,7 +3176,7 @@ async function startApp() {
         if (p) { if(!Array.isArray(p.excluded)) p.excluded=[]; const idx=p.excluded.indexOf(did);
           if (!t.checked && idx<0) p.excluded.push(did);       // desmarcado = se quita
           else if (t.checked && idx>=0) p.excluded.splice(idx,1); }  // marcado = se incluye
-        renderPedidoBlocks(); }
+        renderPedidoBlocks(); updateMenuOrderTotal(); }
     });
     on('menu-order-pedidos','click',e=>{
       if (e.target.classList.contains('menu-personalizar-btn')) { const i=+e.target.dataset.pedido, p=menuDraft.pedidos[i]; if(p){ p.customOpen=!p.customOpen; renderPedidoBlocks(); } }
