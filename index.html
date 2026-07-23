@@ -2704,12 +2704,19 @@ async function startApp() {
     if(!orders.length){ cont.innerHTML='<p class="text-gray-400 italic">No hay pedidos que coincidan con el filtro.</p>'; return; }
     cont.innerHTML = orders.map(o=>{
       const contact=[o.clientEmail,o.clientPhone,o.clientAddress].filter(Boolean).join(' · ');
-      return `<div class="p-3 border rounded-lg bg-white">
+      const pagado = !!o.paid;
+      const badge = pagado
+        ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">PAGADO</span>'
+        : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-300">PENDIENTE PAGO</span>';
+      return `<div class="p-3 border rounded-lg ${pagado?'bg-green-50 border-green-200':'bg-white'}">
         <div class="flex justify-between items-start flex-wrap gap-2">
-          <div><span class="font-bold text-gray-800">${o.clientName||'Cliente sin nombre'}</span>
+          <div><span class="font-bold text-gray-800">${o.clientName||'Cliente sin nombre'}</span> ${badge}
             <span class="text-xs text-gray-400 ml-2">${o.shortId} · ${o.date}</span>
             ${contact?`<p class="text-xs text-gray-500">${contact}</p>`:''}</div>
-          <button type="button" data-orderid="${o.id}" class="menu-order-delete-btn text-red-500 font-bold px-1" title="Eliminar pedido">✕</button>
+          <div class="flex items-center gap-2">
+            <button type="button" data-orderid="${o.id}" class="menu-order-pay-btn text-xs font-semibold px-2 py-1 rounded-lg ${pagado?'bg-red-500 text-white':'bg-green-500 text-white'}">${pagado?'Marcar pendiente':'Marcar pagado'}</button>
+            <button type="button" data-orderid="${o.id}" class="menu-order-delete-btn text-red-500 font-bold px-1" title="Eliminar pedido">✕</button>
+          </div>
         </div>
         <div class="mt-2">${orderDetailHtml(o)}</div>
       </div>`;
@@ -3256,7 +3263,10 @@ async function startApp() {
       }
     });
     // pedidos recibidos: eliminar
-    on('menu-orders-received','click',e=>{ if(e.target.classList.contains('menu-order-delete-btn')){ handleDeleteMenuOrder(e.target.dataset.orderid); } });
+    on('menu-orders-received','click',e=>{
+      if(e.target.classList.contains('menu-order-delete-btn')){ handleDeleteMenuOrder(e.target.dataset.orderid); }
+      else if(e.target.classList.contains('menu-order-pay-btn')){ const id=e.target.dataset.orderid, ns=JSON.parse(JSON.stringify(state)); const o=ns.menuOrders.find(x=>x.id===id); if(o){ o.paid=!o.paid; updateState(ns); } }
+    });
     on('menu-orders-filter-name','input',renderMenuOrdersReceived);
     on('menu-orders-filter-from','change',renderMenuOrdersReceived);
     on('menu-orders-filter-to','change',renderMenuOrdersReceived);
