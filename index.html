@@ -652,6 +652,17 @@
           </div>
         </div>
         <div class="card">
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">Descuento por Personalización</h2>
+          <p class="text-sm text-gray-500 mb-3">Porcentaje que se descuenta del precio del plato cuando el cliente quita algún componente Y agrega algún adicional.</p>
+          <div class="flex items-end gap-2">
+            <div class="w-40">
+              <label class="block text-sm font-medium text-gray-700">Descuento (%)</label>
+              <input type="number" id="personalizacion-discount-input" min="0" max="100" step="0.01" placeholder="3.58" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-right font-mono">
+            </div>
+            <button type="button" id="personalizacion-discount-save-btn" class="py-2 px-4 rounded-lg font-semibold btn-secondary">Guardar</button>
+          </div>
+        </div>
+        <div class="card">
           <h2 class="text-2xl font-bold text-gray-800 mb-2">Recepción de Pedidos (fechas)</h2>
           <p class="text-sm text-gray-500 mb-3">Define entre qué fechas y horas el cliente puede hacer pedidos por el link. Fuera de ese rango, verá el pedido cerrado. Deja en blanco para permitir pedidos siempre.</p>
           <div class="flex flex-wrap items-end gap-2">
@@ -775,7 +786,7 @@
 </div>
 
 <!-- Aviso flotante: faltan pedidos para domicilio gratis -->
-<div id="menu-delivery-toast" style="display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:70;background:#f97316;color:#fff;padding:0.7rem 1.2rem;border-radius:9999px;box-shadow:0 8px 20px -4px rgba(0,0,0,0.3);font-weight:600;font-size:0.9rem;max-width:90vw;text-align:center;"></div>
+<div id="menu-delivery-toast" style="display:none;position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:80;background:#f97316;color:#fff;padding:0.7rem 1.2rem;border-radius:9999px;box-shadow:0 8px 20px -4px rgba(0,0,0,0.3);font-weight:600;font-size:0.9rem;max-width:92vw;text-align:center;"></div>
 
 <!-- Calculadora flotante -->
 <div id="float-calc" class="hidden">
@@ -945,7 +956,7 @@ async function startApp() {
     ingredients: [], ingredientTypes: [], dishes: [], clients: [],
     customerOrders: [], savedShoppingLists: [], savedProductionPlans: [],
     executedProductions: [], lastOrderSequence: {},
-    menu: [], adicionales: [], menuOrders: [], deliveryCost: 0, orderFrom: '', orderTo: '', orderTimeFrom: '', orderTimeTo: '',
+    menu: [], adicionales: [], menuOrders: [], deliveryCost: 0, personalizacionDiscount: 3.58, orderFrom: '', orderTo: '', orderTimeFrom: '', orderTimeTo: '',
   };
 
   let history = [];
@@ -1000,6 +1011,7 @@ async function startApp() {
       return base;
     }),
     deliveryCost: state.deliveryCost||0,
+    personalizacionDiscount: (state.personalizacionDiscount!=null?state.personalizacionDiscount:3.58),
     orderFrom: state.orderFrom||'',
     orderTo: state.orderTo||'',
     orderTimeFrom: state.orderTimeFrom||'',
@@ -1024,6 +1036,7 @@ async function startApp() {
       adicionales:          data.adicionales          || [],
       menuOrders:           data.menuOrders           || [],
       deliveryCost:         data.deliveryCost         || 0,
+      personalizacionDiscount: (data.personalizacionDiscount!=null ? data.personalizacionDiscount : 3.58),
       orderFrom:            data.orderFrom            || '',
       orderTo:              data.orderTo              || '',
       orderTimeFrom:        data.orderTimeFrom        || '',
@@ -2575,6 +2588,7 @@ async function startApp() {
     renderMenuMainList();
     renderMenuOrdersReceived();
     const dEl=document.getElementById('delivery-cost-input'); if(dEl && document.activeElement!==dEl) dEl.value = state.deliveryCost||0;
+    const pdEl=document.getElementById('personalizacion-discount-input'); if(pdEl && document.activeElement!==pdEl) pdEl.value = (state.personalizacionDiscount!=null?state.personalizacionDiscount:3.58);
     const wf=document.getElementById('order-window-from'); if(wf && document.activeElement!==wf) wf.value = state.orderFrom||'';
     const wt=document.getElementById('order-window-to'); if(wt && document.activeElement!==wt) wt.value = state.orderTo||'';
     const wtf=document.getElementById('order-window-time-from'); if(wtf && document.activeElement!==wtf) wtf.value = state.orderTimeFrom||'';
@@ -2755,18 +2769,20 @@ async function startApp() {
   };
 
   // ---- Formulario de pedido (cliente): SOLO precios de venta ----
-  const PLATO_DISCOUNT_RATE = 0.0358;  // 3.58%
+  const platoDiscountPct = () => (state.personalizacionDiscount!=null ? state.personalizacionDiscount : 3.58);
+  const platoDiscountRate = () => platoDiscountPct()/100;
   // El descuento aplica solo si el cliente quitó algún componente Y agregó algún adicional
   const pedidoDiscountApplies = p => {
     const hasRemoved = Array.isArray(p.excluded) && p.excluded.length > 0;
     const hasAdicion = Array.isArray(p.adicionales) && p.adicionales.length > 0;
     return hasRemoved && hasAdicion;
   };
+  const pedidoItemBasePrice = p => { const m = state.menu.find(x=>x.id===p.itemId); return m ? (m.price||0) : 0; };
   const pedidoItemPrice = p => {
-    const m = state.menu.find(x=>x.id===p.itemId);
-    const base = m ? (m.price||0) : 0;
-    return pedidoDiscountApplies(p) ? Math.round(base * (1 - PLATO_DISCOUNT_RATE)) : base;
+    const base = pedidoItemBasePrice(p);
+    return pedidoDiscountApplies(p) ? Math.round(base * (1 - platoDiscountRate())) : base;
   };
+  const pedidoDiscountAmount = p => pedidoDiscountApplies(p) ? (pedidoItemBasePrice(p) - pedidoItemPrice(p)) : 0;
   const pedidoSubtotal = p => {
     const extra = (p.adicionales||[]).reduce((t,a)=>t+(a.price||0),0);
     return pedidoItemPrice(p) + extra;
@@ -2924,10 +2940,14 @@ async function startApp() {
         }
       }
       const sub = pedidoSubtotal(p);
+      const discNote = pedidoDiscountApplies(p)
+        ? `<p class="text-xs text-green-600 mb-2 font-medium">Plato con descuento: <span class="font-mono">${fmtCur(pedidoItemPrice(p))}</span> <span class="text-gray-400 line-through font-mono">${fmtCur(pedidoItemBasePrice(p))}</span> · ahorras <span class="font-mono">${fmtCur(pedidoDiscountAmount(p))}</span></p>`
+        : '';
       return `<div class="p-4 border rounded-lg bg-gray-50">
         <div class="flex justify-between items-center mb-3"><h4 class="font-bold text-gray-800">Pedido ${i+1}</h4><span class="font-mono font-semibold text-orange-500">${fmtCur(sub)}</span></div>
-        <div class="mb-3"><label class="block text-sm font-medium text-gray-700 mb-1">Plato principal</label>
+        <div class="mb-1"><label class="block text-sm font-medium text-gray-700 mb-1">Plato principal</label>
           <select data-pedido="${i}" class="menu-plato-select block w-full border-gray-300 rounded-md shadow-sm">${opts}</select></div>
+        ${discNote}
         ${customHtml}
         <div>${adicSection}</div>
       </div>`;
@@ -3175,6 +3195,11 @@ async function startApp() {
       const ns=JSON.parse(JSON.stringify(state)); ns.deliveryCost=v; updateState(ns);
       const b=document.getElementById('delivery-cost-save-btn'); const old=b.textContent; b.textContent='Guardado ✓'; setTimeout(()=>{ b.textContent=old; },1500);
     });
+    on('personalizacion-discount-save-btn','click',()=>{
+      let v=parseFloat(document.getElementById('personalizacion-discount-input').value); if(isNaN(v)||v<0) v=0; if(v>100) v=100;
+      const ns=JSON.parse(JSON.stringify(state)); ns.personalizacionDiscount=v; updateState(ns);
+      const b=document.getElementById('personalizacion-discount-save-btn'); const old=b.textContent; b.textContent='Guardado ✓'; setTimeout(()=>{ b.textContent=old; },1500);
+    });
     on('order-window-save-btn','click',()=>{
       const f=document.getElementById('order-window-from').value||'';
       const to=document.getElementById('order-window-to').value||'';
@@ -3283,6 +3308,7 @@ async function startApp() {
     state.menu = (pub && pub.menu) || [];
     state.adicionales = (pub && pub.adicionales) || [];
     state.deliveryCost = (pub && pub.deliveryCost) || 0;
+    state.personalizacionDiscount = (pub && pub.personalizacionDiscount!=null) ? pub.personalizacionDiscount : 3.58;
     state.orderFrom = (pub && pub.orderFrom) || '';
     state.orderTo = (pub && pub.orderTo) || '';
     state.orderTimeFrom = (pub && pub.orderTimeFrom) || '';
@@ -3296,6 +3322,7 @@ async function startApp() {
     // Menú en vivo: si el administrador cambia el menú, se refleja al instante
     if (window._fbSubscribePublicMenu) window._fbSubscribePublicMenu(p=>{
       state.menu=(p&&p.menu)||[]; state.adicionales=(p&&p.adicionales)||[]; state.deliveryCost=(p&&p.deliveryCost)||0;
+      state.personalizacionDiscount=(p&&p.personalizacionDiscount!=null)?p.personalizacionDiscount:3.58;
       state.orderFrom=(p&&p.orderFrom)||''; state.orderTo=(p&&p.orderTo)||'';
       state.orderTimeFrom=(p&&p.orderTimeFrom)||''; state.orderTimeTo=(p&&p.orderTimeTo)||'';
       renderPedidoBlocks(); updateMenuOrderTotal(); applyOrderingWindowUI();
