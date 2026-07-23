@@ -767,6 +767,7 @@
               <label class="block text-sm font-medium text-gray-700">¿Cuántos pedidos deseas?</label>
               <input type="number" id="menu-order-count" min="1" placeholder="Escribe la cantidad" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
             </div>
+            <div id="menu-delivery-inline" class="hidden mt-3 p-2.5 rounded-lg bg-orange-100 border border-orange-300 text-orange-800 text-sm font-semibold text-center"></div>
             <div id="menu-order-pedidos" class="space-y-4 mt-4"></div>
           </div>
         </div>
@@ -786,8 +787,6 @@
 </div>
 
 <!-- Aviso flotante: faltan pedidos para domicilio gratis -->
-<div id="menu-delivery-toast" style="display:none;position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:80;background:#f97316;color:#fff;padding:0.7rem 1.2rem;border-radius:9999px;box-shadow:0 8px 20px -4px rgba(0,0,0,0.3);font-weight:600;font-size:0.9rem;max-width:92vw;text-align:center;"></div>
-
 <!-- Calculadora flotante -->
 <div id="float-calc" class="hidden">
   <div class="calc-header" id="calc-header">
@@ -2828,19 +2827,16 @@ async function startApp() {
       msg.textContent = w ? `La recepción de pedidos está disponible ${w}. ¡Vuelve pronto!` : 'La recepción de pedidos no está disponible en este momento.';
     }
   };
-  let _deliveryToastTimer = null;
   const showDeliveryToast = () => {
-    const t=document.getElementById('menu-delivery-toast'); if(!t) return;
+    const el=document.getElementById('menu-delivery-inline'); if(!el) return;
     const dc=state.deliveryCost||0;
     const n=parseInt(menuDraft.count,10);
     const faltan = (n && n>=1) ? (4-n) : 0;
     if (dc>0 && faltan>0) {
-      t.textContent = `🚚 Agrega ${faltan} pedido${faltan>1?'s':''} más y obtén DOMICILIO GRATIS`;
-      t.style.display='block';
-      clearTimeout(_deliveryToastTimer);
-      _deliveryToastTimer = setTimeout(()=>{ t.style.display='none'; }, 6000);
+      el.textContent = `🚚 Agrega ${faltan} pedido${faltan>1?'s':''} más y obtén DOMICILIO GRATIS`;
+      el.classList.remove('hidden');
     } else {
-      t.style.display='none';
+      el.classList.add('hidden');
     }
   };
   const menuOrderTotal = () => countChosen() ? (menuDraft.pedidos.reduce((t,p)=>t+pedidoSubtotal(p),0) + deliveryAmount()) : 0;
@@ -2859,6 +2855,7 @@ async function startApp() {
         note.className = 'text-xs text-green-600 mt-1 font-medium';
       }
     }
+    showDeliveryToast();
   };
 
   const itemDishesFor = item => {
@@ -3184,7 +3181,7 @@ async function startApp() {
     document.getElementById('menu-order-fields')?.classList.add('hidden');
     ['menu-kind-new','menu-kind-existing'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.classList.add('btn-secondary'); b.classList.remove('btn-primary'); } });
     renderPedidoBlocks(); updateMenuOrderTotal();
-    const t=document.getElementById('menu-delivery-toast'); if(t) t.style.display='none';
+    const t=document.getElementById('menu-delivery-inline'); if(t) t.classList.add('hidden');
   };
 
   const setupMenuModule = () => {
