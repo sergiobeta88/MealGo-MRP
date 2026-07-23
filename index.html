@@ -961,7 +961,7 @@ async function startApp() {
   const buildPublicMenu = () => ({
     menu: (state.menu||[]).filter(m=>m.active!==false).map(m=>({
       id:m.id, name:m.name, price:m.price||0,
-      dishes: (m.dishIds||[]).map(did=>{ const d=state.dishes.find(x=>x.id===did); return { id:did, name:d?d.name:'(plato)', final: !!(d && d.dishType==='final') }; })
+      dishes: (m.dishIds||[]).map(did=>{ const d=state.dishes.find(x=>x.id===did); const o={ id:did, name:d?d.name:'(plato)', final: !!(d && d.dishType==='final') }; if (d && d.dishType==='ensaladas') o.ingredientes = dishIngredientNames(did, true); return o; })
     })),
     adicionales: availableAdicionales().map(a=>{
       const d=state.dishes.find(x=>x.id===a.dishId);
@@ -2530,6 +2530,13 @@ async function startApp() {
     if (d && d.dishType==='ensaladas') return dishIngredientNames(a.dishId, true).join(', ');
     return '';
   };
+  // Igual, pero para los platos que componen un ítem (personalización)
+  const compDishIngText = d => {
+    if (Array.isArray(d.ingredientes)) return d.ingredientes.join(', ');   // viene del menú público
+    const dish=state.dishes.find(x=>x.id===d.id);
+    if (dish && dish.dishType==='ensaladas') return dishIngredientNames(d.id, true).join(', ');
+    return '';
+  };
 
   const renderMenuModule = () => {
     renderDishChecklistGrouped('menu-item-dish-checklist', menuBuilder.dishIds, 'menu-item-dish-check');
@@ -2880,7 +2887,7 @@ async function startApp() {
           if (p.customOpen) {
             list = `<div class="mt-2 p-2 bg-white border rounded-lg">
               <p class="text-xs text-gray-500 mb-1">Marca lo que quieres incluir en tu plato (el precio no cambia). Los platos base no se pueden quitar.</p>
-              ${comps.map(d=>{ const kept = d.final || !(p.excluded||[]).includes(d.id); return `<label class="flex items-center gap-2 text-sm py-0.5 ${d.final?'text-gray-400':'cursor-pointer'}"><input type="checkbox" data-pedido="${i}" data-dishid="${d.id}" class="menu-custom-check accent-orange-500" ${kept?'checked':''} ${d.final?'disabled':''}><span>${d.name}${d.final?' (base)':''}</span></label>`; }).join('')}
+              ${comps.map(d=>{ const kept = d.final || !(p.excluded||[]).includes(d.id); const ing=compDishIngText(d); return `<label class="flex items-center gap-2 text-sm py-0.5 ${d.final?'text-gray-400':'cursor-pointer'}"><input type="checkbox" data-pedido="${i}" data-dishid="${d.id}" class="menu-custom-check accent-orange-500" ${kept?'checked':''} ${d.final?'disabled':''}><span>${d.name}${ing?` <span class="text-gray-500">(${ing})</span>`:''}${d.final?' (base)':''}</span></label>`; }).join('')}
             </div>`;
           }
           customHtml = `<div class="mb-3">${btn}${list}</div>`;
