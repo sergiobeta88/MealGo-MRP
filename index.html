@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MRP MealGo</title>
+    <link rel="icon" type="image/png" href="logo_mealgo.png">
+    <link rel="apple-touch-icon" href="logo_mealgo.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#f97316">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MealGo!">
+    <meta name="mobile-web-app-capable" content="yes">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -194,6 +202,28 @@
       input, select, textarea { background-color: #e6e9ef; }
       input[type="checkbox"], input[type="radio"], input[type="file"] { background-color: initial; }
       input:focus, select:focus, textarea:focus { background-color: #ffffff; }
+
+      /* ── Optimización para celular ── */
+      @media (max-width: 640px) {
+        input, select, textarea { font-size: 16px; }   /* evita el zoom automático en iOS */
+        .app-header { padding: 0.75rem 1rem !important; }
+        .app-header .brand { gap: 0.8rem; justify-content: center; flex-wrap: wrap; text-align: center; }
+        .card { padding: 1rem; }
+        #menu-order-confirm-btn { width: 100%; }
+        #menu-order-total { font-size: 2rem; }
+        .menu-adic-check, .menu-custom-check { width: 1.2rem; height: 1.2rem; }
+        h2 { font-size: 1.4rem; }
+        /* Barra de total/confirmar fija abajo mientras se hace scroll */
+        #menu-order-total-card {
+          position: sticky; bottom: 0; z-index: 40; border-radius: 0;
+          margin-left: -1rem; margin-right: -1rem; padding: 0.75rem 1rem;
+          border-top: 3px solid #f97316; box-shadow: 0 -6px 16px -6px rgba(0,0,0,0.3);
+          flex-direction: row; align-items: center;
+        }
+        #menu-order-total-card > div { flex: 1; min-width: 0; }
+        #menu-order-delivery-note { display: none; }  /* el mensaje va arriba; la barra queda compacta */
+        #menu-order-confirm-btn { width: auto; white-space: nowrap; }
+      }
     </style>
 </head>
 <body class="antialiased">
@@ -729,7 +759,7 @@
             <div id="menu-order-pedidos" class="space-y-4 mt-4"></div>
           </div>
         </div>
-        <div class="card flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div id="menu-order-total-card" class="card flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
             <p class="text-sm text-gray-500 uppercase tracking-wide font-semibold">Valor a pagar</p>
             <p id="menu-order-total" class="text-3xl font-bold text-orange-500 font-mono">$ 0</p>
@@ -2720,7 +2750,7 @@ async function startApp() {
     document.getElementById('menu-orders-view')?.classList.add('hidden');
     document.getElementById('menu-order-view')?.classList.remove('hidden');
     // Logo más grande y subtítulo enfocado al cliente
-    const hdrImg=document.querySelector('.app-header .brand img'); if(hdrImg) hdrImg.style.height='170px';
+    const hdrImg=document.querySelector('.app-header .brand img'); if(hdrImg) hdrImg.style.height = (window.innerWidth < 640 ? '96px' : '170px');
     const sub=document.querySelector('.app-header .subtitle'); if(sub) sub.textContent='Haz tu pedido';
   };
 
