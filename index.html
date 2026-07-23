@@ -963,7 +963,12 @@ async function startApp() {
       id:m.id, name:m.name, price:m.price||0,
       dishes: (m.dishIds||[]).map(did=>{ const d=state.dishes.find(x=>x.id===did); return { id:did, name:d?d.name:'(plato)', final: !!(d && d.dishType==='final') }; })
     })),
-    adicionales: availableAdicionales().map(a=>({ dishId:a.dishId, name:adicName(a.dishId), price:a.price||0 })),
+    adicionales: availableAdicionales().map(a=>{
+      const d=state.dishes.find(x=>x.id===a.dishId);
+      const base={ dishId:a.dishId, name:adicName(a.dishId), price:a.price||0 };
+      if (d && d.dishType==='ensaladas') base.ingredientes = dishIngredientNames(a.dishId, true);
+      return base;
+    }),
     deliveryCost: state.deliveryCost||0,
     orderFrom: state.orderFrom||'',
     orderTo: state.orderTo||'',
@@ -1539,14 +1544,26 @@ async function startApp() {
         <div class="px-2 py-1">${rows}</div>
       </div>`;
     };
+    // ── Total de ingredientes CONSOLIDADO para todo el rango (no por día) ──
+    const rangeTotalIngs={};
+    orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
+      const di=getBI(it.id,it.quantity);
+      Object.keys(di).forEach(k=>{ if(!rangeTotalIngs[k]) rangeTotalIngs[k]={...di[k]}; else rangeTotalIngs[k].quantity+=di[k].quantity; });
+    }));
+    let rangeHtml=`<div class="card p-3 mb-8 border-2 border-orange-300 bg-white shadow-lg break-inside-avoid">
+      <h4 class="font-bold text-xl text-orange-500 mb-1">Total de Ingredientes a Alistar</h4>
+      <p class="text-xs text-gray-500 mb-3">Consolidado de todo el rango: ${fmtDate(sd)}${sd!==ed?` — ${fmtDate(ed)}`:''}.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">`;
+    Object.values(rangeTotalIngs).sort((a,b)=>a.name.localeCompare(b.name)).forEach(i=>{
+      const ck=`c1|${sd}|${ed}|${i.name}`;
+      rangeHtml+=`<label class="flex items-center gap-2 border-b border-gray-100 py-1 cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono font-semibold">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;
+    });
+    rangeHtml+=`</div></div>`;
+    c.innerHTML += rangeHtml;
+
     Object.keys(byDate).sort().forEach(date=>{
       const dailyOrders=byDate[date];
       const isExec=state.executedProductions.includes(date);
-      const totalIngs={};
-      dailyOrders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
-        const di=getBI(it.id,it.quantity);
-        Object.keys(di).forEach(k=>{ if(!totalIngs[k]) totalIngs[k]={...di[k]}; else totalIngs[k].quantity+=di[k].quantity; });
-      }));
       // Listado consolidado: agrupar items por plato (sumando cantidades) y separar finales / acompañantes
       const dishGroups={};
       dailyOrders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
@@ -1578,15 +1595,7 @@ async function startApp() {
           <h3 class="text-xl font-bold text-gray-800">${fmtDate(date)}</h3>
           ${isExec?'<span class="px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">Producción Ejecutada</span>'
             :`<button data-date="${date}" class="btn-execute-daily-production py-2 px-4 rounded-lg font-semibold bg-yellow-500 text-white text-sm">Ejecutar Producción</button>`}
-        </div>
-        <div class="card p-3 mb-6 border border-orange-200 bg-white">
-          <h4 class="font-bold text-lg text-orange-500 mb-3">Total de Ingredientes a Alistar</h4>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">`;
-      Object.values(totalIngs).sort((a,b)=>a.name.localeCompare(b.name)).forEach(i=>{
-        const ck=`c1|${date}|${i.name}`;
-        html+=`<label class="flex items-center gap-2 border-b border-gray-100 py-1 cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono font-semibold">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;
-      });
-      html+=`</div></div>`;
+        </div>`;
       html+=consHtml;
       html+=`<h4 class="font-semibold text-xl text-gray-800 mb-4 border-b pb-2">Desglose por Pedido:</h4>`;
       dailyOrders.sort((a,b)=>(a.clientName||'').localeCompare(b.clientName||'')).forEach(order=>{
@@ -2500,6 +2509,27 @@ async function startApp() {
   const adicName = dishId => { const d=state.dishes.find(x=>x.id===dishId); return d?d.name:'(plato eliminado)'; };
   const availableAdicionales = () => (state.adicionales||[]).filter(a=>a.available!==false);
   const adicDisplayName = a => a.name || adicName(a.dishId);
+  // ¿el ingrediente es de tipo "aceite"?
+  const isAceiteIngredient = ing => { const t=state.ingredientTypes.find(x=>x.id===ing.typeId); return !!(t && /aceite/i.test(t.name||'')); };
+  // Nombres de ingredientes que componen un plato (aplana sub-platos), opcionalmente sin los tipo aceite
+  const dishIngredientNames = (dishId, excludeAceite) => {
+    const names=[]; const seen=new Set();
+    const visit=id=>{ const d=state.dishes.find(x=>x.id===id); if(!d||!Array.isArray(d.components)) return;
+      d.components.forEach(comp=>{
+        if(comp.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===comp.id);
+          if(ing){ if(excludeAceite && isAceiteIngredient(ing)) return; if(!seen.has(ing.name)){ seen.add(ing.name); names.push(ing.name); } } }
+        else { visit(comp.id); }
+      });
+    };
+    visit(dishId); return names;
+  };
+  // Texto de ingredientes para adicionales tipo ensalada (sin peso/costo, sin aceite)
+  const adicIngredientsText = a => {
+    if (Array.isArray(a.ingredientes)) return a.ingredientes.join(', ');   // viene del menú público
+    const d=state.dishes.find(x=>x.id===a.dishId);
+    if (d && d.dishType==='ensaladas') return dishIngredientNames(a.dishId, true).join(', ');
+    return '';
+  };
 
   const renderMenuModule = () => {
     renderDishChecklistGrouped('menu-item-dish-checklist', menuBuilder.dishIds, 'menu-item-dish-check');
@@ -2823,7 +2853,7 @@ async function startApp() {
       const opts = `<option value="">— Selecciona un plato —</option>` + activeMenu().map(m=>`<option value="${m.id}" ${p.itemId===m.id?'selected':''}>${m.name} — ${fmtCur(m.price)}</option>`).join('');
       const adx = availableAdicionales();
       const adics = adx.length
-        ? adx.map(a=>{ const checked=p.adicionales.some(x=>x.dishId===a.dishId)?'checked':''; return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" data-pedido="${i}" data-dishid="${a.dishId}" class="menu-adic-check accent-orange-500" ${checked}><span>${adicDisplayName(a)} <span class="text-gray-400">(${fmtCur(a.price)})</span></span></label>`; }).join('')
+        ? adx.map(a=>{ const checked=p.adicionales.some(x=>x.dishId===a.dishId)?'checked':''; const ing=adicIngredientsText(a); return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" data-pedido="${i}" data-dishid="${a.dishId}" class="menu-adic-check accent-orange-500" ${checked}><span>${adicDisplayName(a)}${ing?` <span class="text-gray-500">(${ing})</span>`:''} <span class="text-gray-400">(${fmtCur(a.price)})</span></span></label>`; }).join('')
         : '<p class="text-xs text-gray-400 italic">No hay adicionales disponibles.</p>';
       // Personalizar plato principal
       const item = state.menu.find(m=>m.id===p.itemId);
