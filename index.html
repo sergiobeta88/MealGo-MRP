@@ -1249,8 +1249,8 @@ async function startApp() {
     document.getElementById('month-filter').addEventListener('change', renderSavedOrders);
     document.getElementById('order-sort-by').addEventListener('change', renderSavedOrders);
     document.getElementById('search-inventory-input').addEventListener('input', renderInventoryList);
-    document.getElementById('production-start-date').addEventListener('change', renderProductionPlanView);
-    document.getElementById('production-end-date').addEventListener('change', renderProductionPlanView);
+    document.getElementById('production-start-date').addEventListener('change', ()=>renderProductionPlanView());
+    document.getElementById('production-end-date').addEventListener('change', ()=>renderProductionPlanView());
     document.getElementById('save-production-plan-btn').addEventListener('click', handleSaveProductionPlan);
     document.getElementById('production-details').addEventListener('click', e => {
       if (e.target.classList.contains('btn-execute-daily-production')) handleExecuteDailyProduction(e.target.dataset.date);
@@ -1547,13 +1547,16 @@ async function startApp() {
     }));
   };
 
-  const renderProductionPlanView = () => {
-    const sd=document.getElementById('production-start-date').value;
-    const ed=document.getElementById('production-end-date').value;
-    const c=document.getElementById('production-details'); c.innerHTML='';
-    if(!sd||!ed||sd>ed){ c.innerHTML='<p class="text-gray-500">Por favor, selecciona un rango de fechas válido.</p>'; return; }
-    const orders=state.customerOrders.filter(o=>o.date>=sd&&o.date<=ed);
-    if(!orders.length){ c.innerHTML='<p class="text-gray-500">No hay producción planificada para este rango.</p>'; return; }
+  const renderProductionPlanView = (opts) => {
+    opts = opts || {};
+    const isSaved = !!opts.orders;
+    const sd = isSaved ? opts.sd : document.getElementById('production-start-date').value;
+    const ed = isSaved ? opts.ed : document.getElementById('production-end-date').value;
+    const c = opts.target || document.getElementById('production-details');
+    if (!c) return '';
+    if(!sd||!ed||sd>ed){ c.innerHTML='<p class="text-gray-500">Por favor, selecciona un rango de fechas válido.</p>'; return ''; }
+    const orders = isSaved ? opts.orders : state.customerOrders.filter(o=>o.date>=sd&&o.date<=ed);
+    if(!orders.length){ c.innerHTML='<p class="text-gray-500">No hay producción planificada para este rango.</p>'; return ''; }
     const byDate=orders.reduce((a,o)=>{ (a[o.date]=a[o.date]||[]).push(o); return a; },{});
     const getBI=(dishId,mult)=>{
       const dish=state.dishes.find(d=>d.id===dishId); const ings={};
@@ -1566,7 +1569,6 @@ async function startApp() {
       });
       dive(dish,mult); return ings;
     };
-    // Componentes DIRECTOS de un plato (un nivel; los sub-acompañantes se listan por nombre, sin expandir)
     const getDirect=(dishId,mult)=>{
       const dish=state.dishes.find(d=>d.id===dishId); const comps={};
       if(!dish||!Array.isArray(dish.components)) return comps;
@@ -1588,9 +1590,9 @@ async function startApp() {
       let clientsHtml='';
       if (g.clients && g.clients.length) {
         const label = g.isFinal ? 'Clientes que lo pidieron:' : 'Pedido por (plato final que acompaña):';
-        const lis = g.clients.map((c,ci)=>{
-          const txt = g.isFinal ? c.client : `${c.client}${c.final?` (con ${c.final})`:''}`;
-          const ck = `c4|${g.date}|${g.id}|${ci}|${c.client}`;
+        const lis = g.clients.map((cc,ci)=>{
+          const txt = g.isFinal ? cc.client : `${cc.client}${cc.final?` (con ${cc.final})`:''}`;
+          const ck = `c4|${g.date}|${g.id}|${ci}|${cc.client}`;
           return `<label class="flex items-center gap-2 py-0.5 text-[11px] cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span>${txt}</span></label>`;
         }).join('');
         clientsHtml = `<div class="px-2 py-1 border-t border-gray-100 bg-blue-50"><p class="text-[11px] font-semibold text-blue-700 mb-0.5">${label}</p>${lis}</div>`;
@@ -1604,7 +1606,20 @@ async function startApp() {
         ${clientsHtml}
       </div>`;
     };
-    // ── Total de ingredientes CONSOLIDADO para todo el rango (no por día) ──
+    let out='';
+    // Estado de producción por día (solo en la vista en vivo)
+    if (!isSaved) {
+      let execHtml=`<div class="card p-3 mb-6 border border-gray-200 bg-white"><h4 class="font-bold text-base text-gray-700 mb-2">Estado de producción por día</h4><div class="flex flex-wrap gap-2">`;
+      Object.keys(byDate).sort().forEach(date=>{
+        const isExec=state.executedProductions.includes(date);
+        execHtml+= isExec
+          ? `<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">${fmtDate(date)}: Ejecutada</span>`
+          : `<button data-date="${date}" class="btn-execute-daily-production px-3 py-1 text-xs rounded-full bg-yellow-500 text-white font-semibold">Ejecutar ${fmtDate(date)}</button>`;
+      });
+      execHtml+=`</div></div>`;
+      out += execHtml;
+    }
+    // Total de ingredientes CONSOLIDADO para todo el rango
     const rangeTotalIngs={};
     orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
       const di=getBI(it.id,it.quantity);
@@ -1619,20 +1634,8 @@ async function startApp() {
       rangeHtml+=`<label class="flex items-center gap-2 border-b border-gray-100 py-1 cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono font-semibold">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;
     });
     rangeHtml+=`</div></div>`;
-    c.innerHTML += rangeHtml;
-
-    // ── Estado de producción por día (mantiene el botón de ejecutar) ──
-    let execHtml=`<div class="card p-3 mb-6 border border-gray-200 bg-white"><h4 class="font-bold text-base text-gray-700 mb-2">Estado de producción por día</h4><div class="flex flex-wrap gap-2">`;
-    Object.keys(byDate).sort().forEach(date=>{
-      const isExec=state.executedProductions.includes(date);
-      execHtml+= isExec
-        ? `<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">${fmtDate(date)}: Ejecutada</span>`
-        : `<button data-date="${date}" class="btn-execute-daily-production px-3 py-1 text-xs rounded-full bg-yellow-500 text-white font-semibold">Ejecutar ${fmtDate(date)}</button>`;
-    });
-    execHtml+=`</div></div>`;
-    c.innerHTML += execHtml;
-
-    // ── Clientes por plato (para listar quién pidió cada preparación) ──
+    out += rangeHtml;
+    // Clientes por plato
     const dishClients={};
     const addClient=(dishId,client,finalName)=>{ (dishClients[dishId]=dishClients[dishId]||[]).push({client,final:finalName||''}); };
     orders.forEach(o=>{
@@ -1647,8 +1650,7 @@ async function startApp() {
         (Array.isArray(o.items)?o.items:[]).forEach(it=>addClient(it.id, client, ''));
       }
     });
-
-    // ── Listado consolidado de preparaciones para TODO el rango (no por día) ──
+    // Listado consolidado de preparaciones
     const dishGroups={};
     orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
       const d=state.dishes.find(x=>x.id===it.id);
@@ -1686,9 +1688,8 @@ async function startApp() {
       consHtml+='<p class="text-xs text-gray-400 italic">No hay acompañantes.</p>';
     }
     consHtml+=`</div>`;
-    c.innerHTML += consHtml;
-
-    // ── Desglose por pedido para TODO el rango (no separado por días) ──
+    out += consHtml;
+    // Desglose por pedido
     let deskHtml=`<div class="p-4 border rounded-lg bg-gray-50 shadow-lg mb-8"><h4 class="font-semibold text-xl text-gray-800 mb-4 border-b pb-2">Desglose por Pedido</h4>`;
     const mkIngList=(dishId,qty,keyExtra,date,order)=>{
       const di=getBI(dishId,qty);
@@ -1717,7 +1718,7 @@ async function startApp() {
       deskHtml+=`<div class="p-3 bg-white rounded border mb-4 shadow-md">
         <div class="flex justify-between items-center border-b pb-1 mb-2">
           <div class="text-sm"><p class="font-bold text-gray-800">Orden ID: ${order.shortId||'N/A'} <span class="text-xs font-normal text-gray-400">· ${fmtDate(date)}</span></p>
-            <p class="text-xs text-gray-600">${order.clientId?`<span class="text-orange-500 font-semibold">${order.clientName}</span>`:'Sin Cliente'}</p>
+            <p class="text-xs text-gray-600">${order.clientId?`<span class="text-orange-500 font-semibold">${order.clientName}</span>`:(order.clientName||'Sin Cliente')}</p>
           </div>
           <p class="font-bold text-lg text-green-700">${fmtCur(order.totalCost)}</p>
         </div>
@@ -1727,7 +1728,9 @@ async function startApp() {
         </div></div>`;
     });
     deskHtml+='</div>';
-    c.innerHTML += deskHtml;
+    out += deskHtml;
+    c.innerHTML = out;
+    return out;
   };
 
   const renderSavedProductionPlans = () => {
@@ -2356,91 +2359,90 @@ async function startApp() {
     }));
     const ns=JSON.parse(JSON.stringify(state));
     ns.savedProductionPlans.push({id:`plan-${Date.now()}`,createdAt:new Date().toISOString(),
-      date:{start:sd,end:ed},dishes,ingredients:Object.values(totalIngs),isExecuted:false});
+      date:{start:sd,end:ed},dishes,ingredients:Object.values(totalIngs),
+      orders:JSON.parse(JSON.stringify(orders)),   // snapshot para reproducir la vista consolidada
+      isExecuted:false});
     updateState(ns);
+  };
+
+  // Reconstruye un arreglo de órdenes a partir de un plan (usa el snapshot; si no, desde dishes)
+  const planToOrders = plan => {
+    if (Array.isArray(plan.orders) && plan.orders.length) return plan.orders;
+    const pd=Array.isArray(plan.dishes)?plan.dishes:[];
+    const byOrder={};
+    pd.forEach(it=>{ if(!byOrder[it.orderId]) byOrder[it.orderId]={id:it.orderId,shortId:it.orderShortId||'N/A',date:it.date,clientId:it.clientId,clientName:it.clientName,items:[],totalCost:0};
+      byOrder[it.orderId].items.push({id:it.id,name:it.name,quantity:it.quantity,unitCost:it.unitCost,totalCost:it.totalCost});
+      byOrder[it.orderId].totalCost+=(it.totalCost||0); });
+    return Object.values(byOrder);
   };
 
   const handleViewProductionPlan = id => {
     const plan=state.savedProductionPlans.find(p=>p.id===id); if(!plan) return;
     document.getElementById('modal-title').textContent=`Plan de Producción (${plan.date.start} - ${plan.date.end})`;
-    const pd=Array.isArray(plan.dishes)?plan.dishes:[];
-    const gbi=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); const ings={};
-      if(!d) return ings;
-      const dive=(cd,m)=>cd.components.forEach(c=>{ if(c.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===c.id);
-        if(ing){ if(!ings[c.id]) ings[c.id]={quantity:0,name:ing.name,unit:ing.consumptionUnit}; ings[c.id].quantity+=c.quantity*m; }
-      } else { const sub=state.dishes.find(x=>x.id===c.id); if(sub) dive(sub,c.quantity*m); } });
-      dive(d,mult); return ings; };
-    const gbd=pd.reduce((a,it)=>{ if(!a[it.date]) a[it.date]={}; if(!a[it.date][it.orderId]) a[it.date][it.orderId]={clientName:it.clientName,items:[],totalCost:0,shortId:it.orderShortId||'N/A'};
-      a[it.date][it.orderId].items.push(it); a[it.date][it.orderId].totalCost+=it.totalCost; return a; },{});
-    let html='';
-    Object.keys(gbd).sort().forEach(date=>{
-      const dob=gbd[date]; const dti={};
-      Object.values(dob).forEach(og=>og.items.forEach(it=>{
-        const di=gbi(it.id,it.quantity); Object.keys(di).forEach(k=>{ if(!dti[k]) dti[k]={...di[k]}; else dti[k].quantity+=di[k].quantity; });
-      }));
-      html+=`<div class="mb-6 p-4 border rounded-lg"><h4 class="font-bold mb-2 text-lg">${fmtDate(date)}</h4>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h5 class="font-semibold mb-2 text-sm">Ingredientes del Día</h5>
-          <table class="w-full text-sm"><tbody>`;
-      Object.values(dti).sort((a,b)=>a.name.localeCompare(b.name)).forEach(i=>{ html+=`<tr><td class="py-1 border-b">${i.name}</td><td class="py-1 border-b text-right font-mono">${i.quantity.toFixed(2)} ${i.unit}</td></tr>`; });
-      html+=`</tbody></table></div><div><h5 class="font-semibold mb-2 text-sm">Órdenes</h5><div class="space-y-2">`;
-      Object.keys(dob).forEach(oid=>{ const og=dob[oid];
-        let ihtml=''; let ingH='';
-        og.items.forEach(it=>{ ihtml+=`<p class="text-xs ml-4">- ${it.quantity} x ${it.name} (${fmtCur(it.totalCost)})</p>`;
-          const di=gbi(it.id,it.quantity);
-          const il=Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<div class="flex justify-between border-b border-gray-100 py-0.5 text-xs"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></div>`).join('');
-          if(il) ingH+=`<div class="mb-3 border border-gray-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Para ${it.quantity} x ${it.name}</h6><div class="p-2">${il}</div></div>`;
-        });
-        html+=`<div class="p-2 bg-gray-100 rounded text-sm border-2 border-gray-200">
-          <div class="flex justify-between items-center font-bold border-b pb-0.5 mb-0.5"><span>Orden ID ${og.shortId}</span><span class="text-green-700">${fmtCur(og.totalCost)}</span></div>
-          <p class="text-xs text-gray-700 mb-1">${og.clientName}</p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-            <div><h5 class="font-semibold text-xs mb-1">Platos:</h5>${ihtml}</div>
-            <div><h5 class="font-semibold text-xs mb-1">Ingredientes por Plato:</h5>${ingH}</div>
-          </div></div>`;
-      });
-      html+=`</div></div></div></div>`;
-    });
+    const orders=planToOrders(plan);
     document.getElementById('modal-footer').innerHTML='';
-    document.getElementById('modal-body').innerHTML=html;
+    const body=document.getElementById('modal-body');
+    renderProductionPlanView({ orders, sd:plan.date.start, ed:plan.date.end, target:body });
     document.getElementById('generic-modal').classList.remove('hidden');
   };
 
   const handleExportProductionPDF = id => {
     const plan=state.savedProductionPlans.find(p=>p.id===id); if(!plan) return;
-    const doc=new jsPDF(); const pd=Array.isArray(plan.dishes)?plan.dishes:[];
-    let lyP = addPDFHeader(doc, 'Plan de Producción', `Fechas: ${plan.date.start} al ${plan.date.end}`);
-    const gbi=(did,mult)=>{ const d=state.dishes.find(x=>x.id===did); const ings={};
+    const orders=planToOrders(plan);
+    const doc=new jsPDF(); const sd=plan.date.start, ed=plan.date.end;
+    let ly = addPDFHeader(doc, 'Plan de Producción', `Fechas: ${sd} al ${ed}`);
+    const getBI=(dishId,mult)=>{ const d=state.dishes.find(x=>x.id===dishId); const ings={};
       if(!d) return ings;
       const dive=(cd,m)=>cd.components.forEach(c=>{ if(c.type==='ingredient'){ const ing=state.ingredients.find(i=>i.id===c.id);
         if(ing){ if(!ings[c.id]) ings[c.id]={quantity:0,name:ing.name,unit:ing.consumptionUnit}; ings[c.id].quantity+=c.quantity*m; }
       } else { const sub=state.dishes.find(x=>x.id===c.id); if(sub) dive(sub,c.quantity*m); } });
       dive(d,mult); return ings; };
-    const gbd=pd.reduce((a,it)=>{ if(!a[it.date]) a[it.date]={}; if(!a[it.date][it.orderId]) a[it.date][it.orderId]={clientName:it.clientName,items:[],totalCost:0,shortId:it.orderShortId||'N/A'};
-      a[it.date][it.orderId].items.push(it); a[it.date][it.orderId].totalCost+=it.totalCost; return a; },{});
-    let ly=40;
-    Object.keys(gbd).sort().forEach(date=>{
-      if(lyP>250){doc.addPage();lyP=20;}
-      doc.setFontSize(14); doc.text(`Producción: ${fmtDate(date)}`,14,lyP); lyP+=5;
-      const dob=gbd[date]; const dti={};
-      Object.values(dob).forEach(og=>og.items.forEach(it=>{ const di=gbi(it.id,it.quantity);
-        Object.keys(di).forEach(k=>{ if(!dti[k]) dti[k]={...di[k]}; else dti[k].quantity+=di[k].quantity; }); }));
-      doc.setFontSize(10); doc.text('Ingredientes Totales del Día:',14,lyP+5); lyP+=6;
-      doc.autoTable({startY:lyP,head:[['Ingrediente','Cantidad','Unidad']],
-        body:Object.values(dti).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>[i.name,i.quantity.toFixed(2),i.unit]),
-        theme:'grid',headStyles:{fillColor:[249,115,22],fontSize:8},styles:{fontSize:7}});
-      lyP=doc.autoTable.previous.finalY+8;
-      Object.keys(dob).forEach(oid=>{ const og=dob[oid];
-        if(lyP>250){doc.addPage();lyP=20;}
-        doc.setFontSize(10); doc.text(`Orden ${og.shortId} | ${og.clientName} | ${fmtCur(og.totalCost)}`,14,lyP+5); lyP+=8;
-        doc.autoTable({startY:lyP,head:[['Cant.','Plato','Costo']],
-          body:og.items.map(it=>[it.quantity,it.name,fmtCur(it.totalCost)]),
-          theme:'grid',headStyles:{fillColor:[107,114,128],fontSize:7},styles:{fontSize:7},tableWidth:90,margin:{left:14},
-          columnStyles:{0:{cellWidth:10,halign:'right'},2:{cellWidth:20,halign:'right'}}});
-        lyP=doc.autoTable.previous.finalY+8;
-      });
-      lyP+=8;
+    const chk=y=>{ if(y>265){ doc.addPage(); return 20; } return y; };
+    // 1) Total de ingredientes
+    const totalIngs={};
+    orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{ const di=getBI(it.id,it.quantity);
+      Object.keys(di).forEach(k=>{ if(!totalIngs[k]) totalIngs[k]={...di[k]}; else totalIngs[k].quantity+=di[k].quantity; }); }));
+    doc.setFontSize(13); doc.setTextColor(249,115,22); doc.text('Total de Ingredientes a Alistar',14,ly); doc.setTextColor(0,0,0); ly+=3;
+    doc.autoTable({startY:ly,head:[['Ingrediente','Cantidad','Unidad']],
+      body:Object.values(totalIngs).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>[i.name,i.quantity.toFixed(2),i.unit]),
+      theme:'grid',headStyles:{fillColor:[249,115,22],fontSize:8},styles:{fontSize:7}});
+    ly=doc.autoTable.previous.finalY+8;
+    // 2) Clientes por plato + agrupación
+    const dishClients={}; const addC=(id2,c,f)=>{(dishClients[id2]=dishClients[id2]||[]).push(f?`${c} (con ${f})`:c);};
+    orders.forEach(o=>{ const client=o.clientName||'Sin cliente';
+      if(Array.isArray(o.menuPedidos)&&o.menuPedidos.length){ o.menuPedidos.forEach(ped=>{
+        const fd=ped.dishes.find(dd=>{const d=state.dishes.find(x=>x.id===dd.id);return d&&d.dishType==='final';}); const fn=fd?fd.name:(ped.itemName||'');
+        ped.dishes.forEach(dd=>{const d=state.dishes.find(x=>x.id===dd.id);const isF=d&&d.dishType==='final';addC(dd.id,client,isF?'':fn);}); });
+      } else { (Array.isArray(o.items)?o.items:[]).forEach(it=>addC(it.id,client,'')); } });
+    const dishGroups={};
+    orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{ const d=state.dishes.find(x=>x.id===it.id);
+      if(!dishGroups[it.id]) dishGroups[it.id]={id:it.id,name:d?d.name:it.name,dishType:d?(d.dishType||'final'):'final',totalQty:0};
+      dishGroups[it.id].totalQty+=(it.quantity||0); }));
+    const finals=[],preps=[];
+    Object.values(dishGroups).forEach(g=>{ (g.dishType==='final'?finals:preps).push(g); });
+    finals.sort((a,b)=>a.name.localeCompare(b.name)); preps.sort((a,b)=>a.name.localeCompare(b.name));
+    ly=chk(ly); doc.setFontSize(13); doc.setTextColor(37,99,235); doc.text('Preparaciones — Platos Principales',14,ly); doc.setTextColor(0,0,0); ly+=3;
+    doc.autoTable({startY:ly,head:[['Plato','Und.','Clientes que lo pidieron']],
+      body:finals.map(g=>[g.name,String(g.totalQty),(dishClients[g.id]||[]).join(', ')]),
+      theme:'grid',headStyles:{fillColor:[37,99,235],fontSize:8},styles:{fontSize:7},columnStyles:{1:{cellWidth:14,halign:'right'}}});
+    ly=doc.autoTable.previous.finalY+8;
+    ly=chk(ly); doc.setFontSize(13); doc.setTextColor(37,99,235); doc.text('Preparaciones — Acompañantes',14,ly); doc.setTextColor(0,0,0); ly+=3;
+    const dishTypeName = t => (DISH_GROUPS.find(g=>g[0]===t)||[])[1] || DISH_TYPE_LABELS[t] || t;
+    doc.autoTable({startY:ly,head:[['Plato','Tipo','Und.','Pedido por (con plato final)']],
+      body:preps.map(g=>[g.name,dishTypeName(g.dishType),String(g.totalQty),(dishClients[g.id]||[]).join(', ')]),
+      theme:'grid',headStyles:{fillColor:[37,99,235],fontSize:8},styles:{fontSize:7},columnStyles:{2:{cellWidth:12,halign:'right'}}});
+    ly=doc.autoTable.previous.finalY+10;
+    // 3) Desglose por pedido
+    ly=chk(ly); doc.setFontSize(13); doc.text('Desglose por Pedido',14,ly); ly+=3;
+    const sorted=[...orders].sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.clientName||'').localeCompare(b.clientName||''));
+    sorted.forEach(o=>{ ly=chk(ly);
+      doc.setFontSize(9); doc.text(`Orden ${o.shortId||'N/A'} | ${o.clientName||'Sin Cliente'} | ${fmtDate(o.date)} | ${fmtCur(o.totalCost)}`,14,ly+4); ly+=6;
+      doc.autoTable({startY:ly,head:[['Cant.','Plato']],
+        body:(Array.isArray(o.items)?o.items:[]).map(it=>[String(it.quantity),it.name]),
+        theme:'grid',headStyles:{fillColor:[107,114,128],fontSize:7},styles:{fontSize:7},tableWidth:120,margin:{left:14},columnStyles:{0:{cellWidth:14,halign:'right'}}});
+      ly=doc.autoTable.previous.finalY+6;
     });
-    doc.save(`plan_produccion_${plan.date.start}_${plan.date.end}.pdf`);
+    doc.save(`plan_produccion_${sd}_${ed}.pdf`);
   };
 
   const handleExportProductionCSV = id => {
