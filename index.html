@@ -1585,12 +1585,21 @@ async function startApp() {
       const rows=g.comps.length
         ? g.comps.map(cc=>{const ck=`c2|${g.date}|${g.id}|${cc.name}`;return `<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-sm cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-4 h-4 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${cc.name}</span><span class="font-mono">${cc.quantity.toFixed(2)} ${cc.unit}</span></span></label>`;}).join('')
         : '<p class="text-xs text-gray-400 italic">Sin componentes registrados</p>';
+      let clientsHtml='';
+      if (g.clients && g.clients.length) {
+        const label = g.isFinal ? 'Clientes que lo pidieron:' : 'Pedido por (plato final que acompaña):';
+        const items = g.isFinal
+          ? g.clients.map(c=>c.client)
+          : g.clients.map(c=>`${c.client}${c.final?` (con ${c.final})`:''}`);
+        clientsHtml = `<div class="px-2 py-1 border-t border-gray-100 bg-blue-50"><p class="text-[11px] font-semibold text-blue-700">${label}</p><p class="text-[11px] text-gray-700">${items.join(' · ')}</p></div>`;
+      }
       return `<div class="mb-3 bg-white rounded border border-gray-200 break-inside-avoid">
         <div class="flex justify-between items-center bg-gray-100 px-2 py-1 rounded-t">
           <h6 class="font-bold text-sm text-gray-800">${g.name}</h6>
           <span class="text-xs text-gray-500 whitespace-nowrap">${g.totalQty} und. a producir</span>
         </div>
         <div class="px-2 py-1">${rows}</div>
+        ${clientsHtml}
       </div>`;
     };
     // ── Total de ingredientes CONSOLIDADO para todo el rango (no por día) ──
@@ -1610,82 +1619,103 @@ async function startApp() {
     rangeHtml+=`</div></div>`;
     c.innerHTML += rangeHtml;
 
+    // ── Estado de producción por día (mantiene el botón de ejecutar) ──
+    let execHtml=`<div class="card p-3 mb-6 border border-gray-200 bg-white"><h4 class="font-bold text-base text-gray-700 mb-2">Estado de producción por día</h4><div class="flex flex-wrap gap-2">`;
     Object.keys(byDate).sort().forEach(date=>{
-      const dailyOrders=byDate[date];
       const isExec=state.executedProductions.includes(date);
-      // Listado consolidado: agrupar items por plato (sumando cantidades) y separar finales / acompañantes
-      const dishGroups={};
-      dailyOrders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
-        const d=state.dishes.find(x=>x.id===it.id);
-        if(!dishGroups[it.id]) dishGroups[it.id]={id:it.id,name:d?d.name:it.name,dishType:d?(d.dishType||'final'):'final',totalQty:0};
-        dishGroups[it.id].totalQty+=(it.quantity||0);
-      }));
-      const finals=[], preps=[];
-      Object.values(dishGroups).forEach(g=>{
-        const entry={...g,date,comps:Object.values(getDirect(g.id,g.totalQty)).sort((a,b)=>a.name.localeCompare(b.name))};
-        (g.dishType==='preparation'?preps:finals).push(entry);
-      });
-      finals.sort((a,b)=>a.name.localeCompare(b.name));
-      preps.sort((a,b)=>a.name.localeCompare(b.name));
-      let consHtml=`<div class="card p-3 mb-6 border border-blue-200 bg-white">
-        <h4 class="font-bold text-lg text-blue-600 mb-1">Listado Consolidado para Preparaciones en Orden</h4>
-        <p class="text-xs text-gray-500 mb-3">Componentes de los pedidos agrupados por plato, con las cantidades totales a producir en tanda.</p>
-        <h5 class="font-semibold text-base text-gray-800 mb-2 border-b pb-1">Platos Principales</h5>`;
-      consHtml+= finals.length
-        ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">${finals.map(renderDishBlock).join('')}</div>`
-        : '<p class="text-xs text-gray-400 italic mb-3">No hay platos principales en este día.</p>';
-      consHtml+=`<h5 class="font-semibold text-base text-gray-800 mt-4 mb-2 border-b pb-1">Acompañantes</h5>`;
-      consHtml+= preps.length
-        ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">${preps.map(renderDishBlock).join('')}</div>`
-        : '<p class="text-xs text-gray-400 italic">No hay acompañantes en este día.</p>';
-      consHtml+=`</div>`;
-      let html=`<div class="p-4 border rounded-lg bg-gray-50 shadow-lg mb-8">
-        <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-300">
-          <h3 class="text-xl font-bold text-gray-800">${fmtDate(date)}</h3>
-          ${isExec?'<span class="px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">Producción Ejecutada</span>'
-            :`<button data-date="${date}" class="btn-execute-daily-production py-2 px-4 rounded-lg font-semibold bg-yellow-500 text-white text-sm">Ejecutar Producción</button>`}
-        </div>`;
-      html+=consHtml;
-      html+=`<h4 class="font-semibold text-xl text-gray-800 mb-4 border-b pb-2">Desglose por Pedido:</h4>`;
-      dailyOrders.sort((a,b)=>(a.clientName||'').localeCompare(b.clientName||'')).forEach(order=>{
-        const items=Array.isArray(order.items)?order.items:[];
-        const iHtml=items.map(it=>`<li class="flex justify-between text-xs py-0.5"><span class="font-bold">${it.quantity} x ${it.name}</span><span class="text-gray-600">${fmtCur(it.unitCost)} c/u</span></li>`).join('');
-        let ingHtml='';
-        const mkIngList = (dishId, qty, keyExtra) => {
-          const di=getBI(dishId,qty);
-          return Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>{const ck=`c3|${date}|${order.id||order.shortId||''}|${keyExtra}|${i.name}`;return `<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-xs cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;}).join('');
-        };
-        if (Array.isArray(order.menuPedidos) && order.menuPedidos.length) {
-          // Agrupado por pedido del cliente: plato principal + adicionales, en orden (guía de emplatado)
-          order.menuPedidos.forEach((ped,pi)=>{
-            const inner = ped.dishes.map((dd,di2)=>{
-              const ilist = mkIngList(dd.id, 1, `p${pi}-${di2}-${dd.id}`);
-              return `<div class="mt-1"><p class="text-xs font-semibold ${dd.adicional?'text-gray-500':'text-gray-800'}">${dd.adicional?'+ ':''}${dd.name}</p><div class="pl-2">${ilist||'<span class="text-xs text-gray-400 italic">sin ingredientes</span>'}</div></div>`;
-            }).join('');
-            ingHtml += `<div class="mb-3 border-2 border-orange-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Pedido ${pi+1} — ${ped.itemName}</h6><div class="p-2">${inner}</div></div>`;
-          });
-        } else {
-          // Órdenes creadas manualmente: agrupado por plato
-          items.forEach(it=>{
-            const ilist = mkIngList(it.id, it.quantity, `${it.id}`);
-            if(ilist) ingHtml+=`<div class="mb-3 border border-gray-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Para ${it.quantity} x ${it.name}</h6><div class="p-2 space-y-0.5">${ilist}</div></div>`;
-          });
-        }
-        html+=`<div class="p-3 bg-white rounded border mb-4 shadow-md">
-          <div class="flex justify-between items-center border-b pb-1 mb-2">
-            <div class="text-sm"><p class="font-bold text-gray-800">Orden ID: ${order.shortId||'N/A'}</p>
-              <p class="text-xs text-gray-600">${order.clientId?`<span class="text-orange-500 font-semibold">${order.clientName}</span>`:'Sin Cliente'}</p>
-            </div>
-            <p class="font-bold text-lg text-green-700">${fmtCur(order.totalCost)}</p>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-            <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Platos a Empacar:</h5><ul class="list-disc list-inside space-y-0.5 pl-2">${iHtml}</ul></div>
-            <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Composición por pedido (para emplatar):</h5><div class="space-y-2">${ingHtml}</div></div>
-          </div></div>`;
-      });
-      html+='</div>';
-      c.innerHTML+=html;
+      execHtml+= isExec
+        ? `<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">${fmtDate(date)}: Ejecutada</span>`
+        : `<button data-date="${date}" class="btn-execute-daily-production px-3 py-1 text-xs rounded-full bg-yellow-500 text-white font-semibold">Ejecutar ${fmtDate(date)}</button>`;
     });
+    execHtml+=`</div></div>`;
+    c.innerHTML += execHtml;
+
+    // ── Clientes por plato (para listar quién pidió cada preparación) ──
+    const dishClients={};
+    const addClient=(dishId,client,finalName)=>{ (dishClients[dishId]=dishClients[dishId]||[]).push({client,final:finalName||''}); };
+    orders.forEach(o=>{
+      const client=o.clientName||'Sin cliente';
+      if (Array.isArray(o.menuPedidos) && o.menuPedidos.length) {
+        o.menuPedidos.forEach(ped=>{
+          const finalDish=ped.dishes.find(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return d && d.dishType==='final'; });
+          const finalName=finalDish?finalDish.name:(ped.itemName||'');
+          ped.dishes.forEach(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); const isFinal=d&&d.dishType==='final'; addClient(dd.id, client, isFinal?'':finalName); });
+        });
+      } else {
+        (Array.isArray(o.items)?o.items:[]).forEach(it=>addClient(it.id, client, ''));
+      }
+    });
+
+    // ── Listado consolidado de preparaciones para TODO el rango (no por día) ──
+    const dishGroups={};
+    orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
+      const d=state.dishes.find(x=>x.id===it.id);
+      if(!dishGroups[it.id]) dishGroups[it.id]={id:it.id,name:d?d.name:it.name,dishType:d?(d.dishType||'final'):'final',totalQty:0};
+      dishGroups[it.id].totalQty+=(it.quantity||0);
+    }));
+    const rangeKey=`${sd}|${ed}`;
+    const finals=[], preps=[];
+    Object.values(dishGroups).forEach(g=>{
+      const isFinal = g.dishType==='final';
+      const entry={...g, date:rangeKey, isFinal, clients:(dishClients[g.id]||[]), comps:Object.values(getDirect(g.id,g.totalQty)).sort((a,b)=>a.name.localeCompare(b.name))};
+      (isFinal?finals:preps).push(entry);
+    });
+    finals.sort((a,b)=>a.name.localeCompare(b.name));
+    preps.sort((a,b)=>a.name.localeCompare(b.name));
+    let consHtml=`<div class="card p-3 mb-8 border border-blue-200 bg-white">
+      <h4 class="font-bold text-lg text-blue-600 mb-1">Listado Consolidado para Preparaciones en Orden</h4>
+      <p class="text-xs text-gray-500 mb-3">Consolidado de todo el rango (${fmtDate(sd)}${sd!==ed?` — ${fmtDate(ed)}`:''}): cantidades totales a producir y clientes que pidieron cada plato.</p>
+      <h5 class="font-semibold text-base text-gray-800 mb-2 border-b pb-1">Platos Principales</h5>`;
+    consHtml+= finals.length
+      ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">${finals.map(renderDishBlock).join('')}</div>`
+      : '<p class="text-xs text-gray-400 italic mb-3">No hay platos principales.</p>';
+    consHtml+=`<h5 class="font-semibold text-base text-gray-800 mt-4 mb-2 border-b pb-1">Acompañantes</h5>`;
+    consHtml+= preps.length
+      ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">${preps.map(renderDishBlock).join('')}</div>`
+      : '<p class="text-xs text-gray-400 italic">No hay acompañantes.</p>';
+    consHtml+=`</div>`;
+    c.innerHTML += consHtml;
+
+    // ── Desglose por pedido para TODO el rango (no separado por días) ──
+    let deskHtml=`<div class="p-4 border rounded-lg bg-gray-50 shadow-lg mb-8"><h4 class="font-semibold text-xl text-gray-800 mb-4 border-b pb-2">Desglose por Pedido</h4>`;
+    const mkIngList=(dishId,qty,keyExtra,date,order)=>{
+      const di=getBI(dishId,qty);
+      return Object.values(di).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>{const ck=`c3|${date}|${order.id||order.shortId||''}|${keyExtra}|${i.name}`;return `<label class="flex items-center gap-2 border-b border-gray-100 py-0.5 text-xs cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span class="prod-line flex-1 flex justify-between"><span>${i.name}</span><span class="font-mono">${i.quantity.toFixed(2)} ${i.unit}</span></span></label>`;}).join('');
+    };
+    const sortedOrders=[...orders].sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.clientName||'').localeCompare(b.clientName||''));
+    sortedOrders.forEach(order=>{
+      const date=order.date;
+      const items=Array.isArray(order.items)?order.items:[];
+      const iHtml=items.map(it=>`<li class="flex justify-between text-xs py-0.5"><span class="font-bold">${it.quantity} x ${it.name}</span><span class="text-gray-600">${fmtCur(it.unitCost)} c/u</span></li>`).join('');
+      let ingHtml='';
+      if (Array.isArray(order.menuPedidos) && order.menuPedidos.length) {
+        order.menuPedidos.forEach((ped,pi)=>{
+          const inner = ped.dishes.map((dd,di2)=>{
+            const ilist = mkIngList(dd.id, 1, `p${pi}-${di2}-${dd.id}`, date, order);
+            return `<div class="mt-1"><p class="text-xs font-semibold ${dd.adicional?'text-gray-500':'text-gray-800'}">${dd.adicional?'+ ':''}${dd.name}</p><div class="pl-2">${ilist||'<span class="text-xs text-gray-400 italic">sin ingredientes</span>'}</div></div>`;
+          }).join('');
+          ingHtml += `<div class="mb-3 border-2 border-orange-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Pedido ${pi+1} — ${ped.itemName}</h6><div class="p-2">${inner}</div></div>`;
+        });
+      } else {
+        items.forEach(it=>{
+          const ilist = mkIngList(it.id, it.quantity, `${it.id}`, date, order);
+          if(ilist) ingHtml+=`<div class="mb-3 border border-gray-200 rounded-lg overflow-hidden shadow-sm"><h6 class="font-bold text-xs text-white bg-orange-500 px-2 py-1">🍽️ Para ${it.quantity} x ${it.name}</h6><div class="p-2 space-y-0.5">${ilist}</div></div>`;
+        });
+      }
+      deskHtml+=`<div class="p-3 bg-white rounded border mb-4 shadow-md">
+        <div class="flex justify-between items-center border-b pb-1 mb-2">
+          <div class="text-sm"><p class="font-bold text-gray-800">Orden ID: ${order.shortId||'N/A'} <span class="text-xs font-normal text-gray-400">· ${fmtDate(date)}</span></p>
+            <p class="text-xs text-gray-600">${order.clientId?`<span class="text-orange-500 font-semibold">${order.clientName}</span>`:'Sin Cliente'}</p>
+          </div>
+          <p class="font-bold text-lg text-green-700">${fmtCur(order.totalCost)}</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+          <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Platos a Empacar:</h5><ul class="list-disc list-inside space-y-0.5 pl-2">${iHtml}</ul></div>
+          <div><h5 class="font-semibold text-sm mb-1 text-gray-700">Composición por pedido (para emplatar):</h5><div class="space-y-2">${ingHtml}</div></div>
+        </div></div>`;
+    });
+    deskHtml+='</div>';
+    c.innerHTML += deskHtml;
   };
 
   const renderSavedProductionPlans = () => {
