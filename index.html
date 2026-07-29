@@ -16,6 +16,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
     <!-- ============================================================
@@ -839,10 +840,15 @@
             <div><label class="block text-xs font-medium text-gray-500">Monto</label>
               <input type="number" id="acc-tx-amount" step="100" min="0" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm text-right font-mono"></div>
             <div><label class="block text-xs font-medium text-gray-500">Categoría</label>
-              <input type="text" id="acc-tx-category" placeholder="Ej: Ventas, Insumos…" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+              <select id="acc-tx-category" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></select></div>
           </div>
           <div class="mt-3"><label class="block text-xs font-medium text-gray-500">Descripción</label>
             <input type="text" id="acc-tx-desc" placeholder="Detalle de la transacción" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+          <div class="mt-2 flex items-end gap-2">
+            <div class="flex-1"><label class="block text-xs font-medium text-gray-500">Nueva categoría</label>
+              <input type="text" id="acc-tx-newcat" placeholder="Crea una categoría…" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+            <button type="button" id="acc-tx-newcat-add" class="py-2 px-3 rounded-lg text-xs font-semibold btn-secondary">Añadir categoría</button>
+          </div>
           <button type="button" id="acc-tx-add" class="mt-3 py-2 px-5 rounded-lg font-semibold btn-primary text-sm">Registrar</button>
           <p id="acc-tx-msg" class="text-sm mt-2"></p>
         </div>
@@ -850,7 +856,10 @@
 
       <!-- Movimientos -->
       <div class="card">
-        <h3 class="text-xl font-bold text-gray-800 mb-1">Movimientos</h3>
+        <div class="flex justify-between items-center mb-1 flex-wrap gap-2">
+          <h3 class="text-xl font-bold text-gray-800">Movimientos</h3>
+          <button type="button" id="acc-tx-export" class="py-2 px-3 rounded-lg text-xs font-semibold btn-secondary">⬇ Exportar a Excel</button>
+        </div>
         <p id="acc-tx-count" class="text-xs text-gray-500 mb-3"></p>
         <div id="acc-tx-list" class="space-y-2 max-h-[32rem] overflow-y-auto"></div>
       </div>
@@ -1025,7 +1034,7 @@ async function startApp() {
   // ══════════════════════════════════
   let state = {
     ingredients: [], ingredientTypes: [], dishes: [], clients: [],
-    customerOrders: [], savedShoppingLists: [], savedProductionPlans: [], accounts: [], transactions: [],
+    customerOrders: [], savedShoppingLists: [], savedProductionPlans: [], accounts: [], transactions: [], txCategories: [],
     executedProductions: [], lastOrderSequence: {}, prodMeasures: {},
     menu: [], adicionales: [], menuOrders: [], deliveryCost: 0, personalizacionDiscount: 3.58, orderFrom: '', orderTo: '', orderTimeFrom: '', orderTimeTo: '',
   };
@@ -1103,6 +1112,7 @@ async function startApp() {
       savedProductionPlans: data.savedProductionPlans || [],
       accounts:             data.accounts             || [],
       transactions:         data.transactions         || [],
+      txCategories:         data.txCategories         || [],
       executedProductions:  data.executedProductions  || [],
       prodMeasures:         data.prodMeasures         || {},
       lastOrderSequence:    data.lastOrderSequence    || {},
@@ -2836,6 +2846,7 @@ async function startApp() {
         : '';
       const lines=[`<div class="flex justify-between"><span class="font-medium text-gray-800">${itemName}${descNote}</span><span class="font-mono">${fmtCur(itemPrice)}</span></div>`];
       (p.adicionales||[]).forEach(a=>lines.push(`<div class="flex justify-between text-gray-500 pl-3"><span>+ ${a.name}</span><span class="font-mono">${fmtCur(a.price)}</span></div>`));
+      if (p.comment) lines.push(`<div class="text-xs text-gray-700 italic pl-3 mt-0.5 bg-yellow-50 rounded px-1 py-0.5">📝 ${p.comment}</div>`);
       lines.push(`<div class="flex justify-between border-t border-gray-100 mt-0.5 pt-0.5"><span class="text-gray-500">Subtotal pedido ${idx+1}</span><span class="font-mono font-semibold">${fmtCur(p.subtotal)}</span></div>`);
       return `<div class="text-sm mb-2">${lines.join('')}</div>`;
     }).join('');
@@ -3134,6 +3145,8 @@ async function startApp() {
         ${discNote}
         ${customHtml}
         <div>${adicSection}</div>
+        <div class="mt-3"><label class="block text-sm font-medium text-gray-700 mb-1">Comentarios (opcional)</label>
+          <textarea data-pedido="${i}" rows="2" class="menu-comment-input block w-full border-gray-300 rounded-md shadow-sm text-sm" placeholder="¿Algo que debamos tener en cuenta para este plato?">${p.comment||''}</textarea></div>
       </div>`;
     }).join('');
   };
@@ -3211,6 +3224,7 @@ async function startApp() {
       return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:pedidoItemPrice(p),
         itemPriceOriginal:m?(m.price||0):0, discountApplied:disc,
         itemDishIds: effectivePedidoDishIds(p, m),
+        comment: (p.comment||'').trim(),
         adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };    });
     const baseOrder = { shortId:`PED-${Date.now().toString().slice(-6)}`, date:new Date().toISOString().slice(0,10),
       clientName:`${name} ${lastname}`.trim(), clientFirstName:name, clientLastName:lastname,
@@ -3316,7 +3330,8 @@ async function startApp() {
     try {
       let resumen = order.pedidos.map((p,i)=>{
         const adis=(p.adicionales||[]).map(a=>`    + ${a.name}: ${fmtCur(a.price)}`).join('\n');
-        return `Pedido ${i+1}: ${p.itemName} - ${fmtCur(p.itemPrice)}${adis?'\n'+adis:''}\n    Subtotal: ${fmtCur(p.subtotal)}`;
+        const com=p.comment?`\n    Comentario: ${p.comment}`:'';
+        return `Pedido ${i+1}: ${p.itemName} - ${fmtCur(p.itemPrice)}${adis?'\n'+adis:''}${com}\n    Subtotal: ${fmtCur(p.subtotal)}`;
       }).join('\n\n');
       if ((order.deliveryCost||0) > 0) resumen += `\n\nDomicilio: ${fmtCur(order.deliveryCost)}`;
       const params = {
@@ -3476,6 +3491,9 @@ async function startApp() {
       if (e.target.closest('.menu-personalizar-btn')) { const i=+e.target.closest('.menu-personalizar-btn').dataset.pedido, p=menuDraft.pedidos[i]; if(p){ p.customOpen=!p.customOpen; renderPedidoBlocks(); } }
       else if (e.target.closest('.menu-adic-toggle-btn')) { const i=+e.target.closest('.menu-adic-toggle-btn').dataset.pedido, p=menuDraft.pedidos[i]; if(p){ p.adicOpen=!p.adicOpen; renderPedidoBlocks(); } }
     });
+    on('menu-order-pedidos','input',e=>{
+      if (e.target.classList.contains('menu-comment-input')) { const i=+e.target.dataset.pedido; if(menuDraft.pedidos[i]) menuDraft.pedidos[i].comment=e.target.value; }
+    });
     on('menu-order-confirm-btn','click',handleConfirmMenuOrder);
   };
 
@@ -3522,6 +3540,9 @@ async function startApp() {
     if (accMonthFilter===null) accMonthFilter = accCurrentMonth();
     const mf=document.getElementById('acc-month-filter'); if(mf && document.activeElement!==mf) mf.value = accMonthFilter||'';
     accFillAccountSelects();
+    // Categorías
+    const catSel=document.getElementById('acc-tx-category');
+    if(catSel){ const v=catSel.value; catSel.innerHTML='<option value="">(sin categoría)</option>'+(state.txCategories||[]).map(c=>`<option value="${c}">${c}</option>`).join(''); if(v) catSel.value=v; }
     // Cuentas
     const al=document.getElementById('acc-accounts-list');
     if(al){
@@ -3612,10 +3633,39 @@ async function startApp() {
     showMsg('Transacción registrada.',true); setTimeout(()=>{ if(msg) msg.textContent=''; },1500);
     renderAccounting();
   };
+  const handleAddCategory = () => {
+    const inp=document.getElementById('acc-tx-newcat'); const name=(inp.value||'').trim();
+    if(!name) return;
+    const ns=JSON.parse(JSON.stringify(state)); ns.txCategories=ns.txCategories||[];
+    if(!ns.txCategories.some(c=>c.toLowerCase()===name.toLowerCase())) ns.txCategories.push(name);
+    updateState(ns); inp.value=''; renderAccounting();
+    const sel=document.getElementById('acc-tx-category'); if(sel) sel.value=name;
+  };
+  const handleExportAccountingExcel = () => {
+    const tx=accFilteredTx();
+    if(!tx.length){ const msg=document.getElementById('acc-tx-msg'); if(msg){ msg.textContent='No hay movimientos para exportar.'; msg.className='text-sm mt-2 text-red-700'; } return; }
+    const rows=tx.map(t=>({
+      Fecha:t.date||'', Tipo:t.type||'',
+      Cuenta:accName(t.accountId), 'Cuenta destino': t.type==='transferencia'?accName(t.toAccountId):'',
+      Categoría:t.category||'', Descripción:t.description||'',
+      Ingreso: t.type==='ingreso'?(t.amount||0):'', Gasto: t.type==='gasto'?(t.amount||0):'', Transferencia: t.type==='transferencia'?(t.amount||0):''
+    }));
+    // fila de totales
+    const ing=tx.filter(t=>t.type==='ingreso').reduce((s,t)=>s+(t.amount||0),0);
+    const gas=tx.filter(t=>t.type==='gasto').reduce((s,t)=>s+(t.amount||0),0);
+    rows.push({}); rows.push({Fecha:'TOTALES', Ingreso:ing, Gasto:gas});
+    const ws=XLSX.utils.json_to_sheet(rows, {header:['Fecha','Tipo','Cuenta','Cuenta destino','Categoría','Descripción','Ingreso','Gasto','Transferencia']});
+    ws['!cols']=[{wch:12},{wch:14},{wch:16},{wch:16},{wch:16},{wch:28},{wch:12},{wch:12},{wch:14}];
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
+    const label=accMonthFilter||'todos';
+    XLSX.writeFile(wb, `contabilidad_${label}.xlsx`);
+  };
   const setupAccountingListeners = () => {
     const on=(id,ev,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener(ev,fn); };
     on('acc-account-add','click',handleAddAccount);
     on('acc-tx-add','click',handleAddTransaction);
+    on('acc-tx-newcat-add','click',handleAddCategory);
+    on('acc-tx-export','click',handleExportAccountingExcel);
     on('acc-tx-type','change',accSetTxTypeUI);
     on('acc-month-filter','change',e=>{ accMonthFilter=e.target.value; renderAccounting(); });
     on('acc-month-all','click',()=>{ accMonthFilter=''; renderAccounting(); });
