@@ -301,6 +301,7 @@
     <a href="#purchases"   id="nav-purchases"   class="nav-link px-6 py-3 text-gray-600">Compras</a>
     <a href="#production"  id="nav-production"  class="nav-link px-6 py-3 text-gray-600">Producción</a>
     <a href="#menu"        id="nav-menu"        class="nav-link px-6 py-3 text-gray-600">Menú y Pedidos</a>
+    <a href="#accounting"  id="nav-accounting"  class="nav-link px-6 py-3 text-gray-600">Contabilidad</a>
   </nav>
 
   <main>
@@ -790,6 +791,70 @@
         </div>
       </div>
     </section>
+
+    <section id="accounting-section" class="hidden space-y-6">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <h2 class="text-3xl font-bold text-gray-800">Contabilidad</h2>
+        <div class="flex items-end gap-2">
+          <div><label class="block text-xs font-medium text-gray-500">Mes</label>
+            <input type="month" id="acc-month-filter" class="mt-1 block border-gray-300 rounded-md shadow-sm text-sm"></div>
+          <button type="button" id="acc-month-all" class="py-2 px-3 rounded-lg text-xs font-semibold text-blue-600">Ver todos</button>
+        </div>
+      </div>
+
+      <!-- Monitor -->
+      <div id="acc-monitor" class="grid grid-cols-2 lg:grid-cols-4 gap-3"></div>
+      <div id="acc-relation" class="card"></div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Cuentas -->
+        <div class="card">
+          <h3 class="text-xl font-bold text-gray-800 mb-3">Cuentas</h3>
+          <div class="flex flex-wrap items-end gap-2 mb-4">
+            <div class="flex-1 min-w-[140px]"><label class="block text-xs font-medium text-gray-500">Nombre de la cuenta</label>
+              <input type="text" id="acc-account-name" placeholder="Ej: Nequi, Efectivo, Banco…" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+            <div class="w-32"><label class="block text-xs font-medium text-gray-500">Saldo inicial</label>
+              <input type="number" id="acc-account-initial" step="100" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm text-right font-mono"></div>
+            <button type="button" id="acc-account-add" class="py-2 px-4 rounded-lg font-semibold btn-secondary text-sm">Añadir</button>
+          </div>
+          <div id="acc-accounts-list" class="space-y-2"></div>
+        </div>
+
+        <!-- Registrar transacción -->
+        <div class="card">
+          <h3 class="text-xl font-bold text-gray-800 mb-3">Registrar Transacción</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-medium text-gray-500">Tipo</label>
+              <select id="acc-tx-type" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm">
+                <option value="ingreso">Ingreso</option>
+                <option value="gasto">Gasto</option>
+                <option value="transferencia">Transferencia</option>
+              </select></div>
+            <div><label class="block text-xs font-medium text-gray-500">Fecha</label>
+              <input type="date" id="acc-tx-date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+            <div><label class="block text-xs font-medium text-gray-500" id="acc-tx-account-label">Cuenta</label>
+              <select id="acc-tx-account" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></select></div>
+            <div id="acc-tx-to-wrap" class="hidden"><label class="block text-xs font-medium text-gray-500">Cuenta destino</label>
+              <select id="acc-tx-to-account" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></select></div>
+            <div><label class="block text-xs font-medium text-gray-500">Monto</label>
+              <input type="number" id="acc-tx-amount" step="100" min="0" placeholder="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm text-right font-mono"></div>
+            <div><label class="block text-xs font-medium text-gray-500">Categoría</label>
+              <input type="text" id="acc-tx-category" placeholder="Ej: Ventas, Insumos…" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+          </div>
+          <div class="mt-3"><label class="block text-xs font-medium text-gray-500">Descripción</label>
+            <input type="text" id="acc-tx-desc" placeholder="Detalle de la transacción" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm"></div>
+          <button type="button" id="acc-tx-add" class="mt-3 py-2 px-5 rounded-lg font-semibold btn-primary text-sm">Registrar</button>
+          <p id="acc-tx-msg" class="text-sm mt-2"></p>
+        </div>
+      </div>
+
+      <!-- Movimientos -->
+      <div class="card">
+        <h3 class="text-xl font-bold text-gray-800 mb-1">Movimientos</h3>
+        <p id="acc-tx-count" class="text-xs text-gray-500 mb-3"></p>
+        <div id="acc-tx-list" class="space-y-2 max-h-[32rem] overflow-y-auto"></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -960,7 +1025,7 @@ async function startApp() {
   // ══════════════════════════════════
   let state = {
     ingredients: [], ingredientTypes: [], dishes: [], clients: [],
-    customerOrders: [], savedShoppingLists: [], savedProductionPlans: [],
+    customerOrders: [], savedShoppingLists: [], savedProductionPlans: [], accounts: [], transactions: [],
     executedProductions: [], lastOrderSequence: {}, prodMeasures: {},
     menu: [], adicionales: [], menuOrders: [], deliveryCost: 0, personalizacionDiscount: 3.58, orderFrom: '', orderTo: '', orderTimeFrom: '', orderTimeTo: '',
   };
@@ -979,11 +1044,11 @@ async function startApp() {
   const sections  = { dashboard:'dashboard-section', clients:'clients-section',
     ingredients:'ingredients-section', inventory:'inventory-section',
     dishes:'dishes-section', purchases:'purchases-section', production:'production-section',
-    menu:'menu-section' };
+    menu:'menu-section', accounting:'accounting-section' };
   const navLinks  = { dashboard:'nav-dashboard', clients:'nav-clients',
     ingredients:'nav-ingredients', inventory:'nav-inventory',
     dishes:'nav-dishes', purchases:'nav-purchases', production:'nav-production',
-    menu:'nav-menu' };
+    menu:'nav-menu', accounting:'nav-accounting' };
 
   // ══════════════════════════════════
   //   PERSISTENCIA FIREBASE
@@ -1036,6 +1101,8 @@ async function startApp() {
       customerOrders:       data.customerOrders       || data.dishesToProduce || [],
       savedShoppingLists:   data.savedShoppingLists   || [],
       savedProductionPlans: data.savedProductionPlans || [],
+      accounts:             data.accounts             || [],
+      transactions:         data.transactions         || [],
       executedProductions:  data.executedProductions  || [],
       prodMeasures:         data.prodMeasures         || {},
       lastOrderSequence:    data.lastOrderSequence    || {},
@@ -1289,6 +1356,7 @@ async function startApp() {
     document.getElementById('search-dish-input').addEventListener('input', renderDishesList);
     setupFloatingCalculator();
     setupMenuModule();
+    setupAccountingListeners();
   };
 
   // ── Calculadora flotante (solo herramienta de pantalla, no toca datos) ──
@@ -1345,6 +1413,7 @@ async function startApp() {
     renderSavedShoppingLists(); renderProductionPlanView(); renderSavedProductionPlans();
     renderCurrentProductionOrder();
     renderMenuModule();
+    renderAccounting();
     document.getElementById('undo-btn').disabled = history.length === 0;
   };
 
@@ -3420,6 +3489,140 @@ async function startApp() {
     document.getElementById('modal-body').innerHTML = bodyHtml;
     document.getElementById('modal-footer').innerHTML = footerHtml;
     document.getElementById('generic-modal').classList.remove('hidden');
+  };
+
+  // ══════════════════════════════════
+  //   MÓDULO DE CONTABILIDAD
+  // ══════════════════════════════════
+  let accMonthFilter = null; // 'YYYY-MM' o '' (todos); null = aún sin inicializar
+  const accCurrentMonth = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+  const getInventoryTotalValue = () => (state.ingredients||[]).reduce((t,ing)=>t+(ing.inventoryQty||0)*getInventoryUnitCost(ing),0);
+  const accName = id => { const a=(state.accounts||[]).find(x=>x.id===id); return a?a.name:'(cuenta eliminada)'; };
+  const accountBalance = accId => {
+    let bal = 0; const a=(state.accounts||[]).find(x=>x.id===accId); if(a) bal += (a.initial||0);
+    (state.transactions||[]).forEach(t=>{
+      if(t.type==='ingreso' && t.accountId===accId) bal += (t.amount||0);
+      else if(t.type==='gasto' && t.accountId===accId) bal -= (t.amount||0);
+      else if(t.type==='transferencia'){ if(t.accountId===accId) bal -= (t.amount||0); if(t.toAccountId===accId) bal += (t.amount||0); }
+    });
+    return bal;
+  };
+  const accFilteredTx = () => {
+    const m=accMonthFilter;
+    return (state.transactions||[]).filter(t=> !m || (t.date||'').startsWith(m)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  };
+  const accFillAccountSelects = () => {
+    const opts = (state.accounts||[]).map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+    const s1=document.getElementById('acc-tx-account'), s2=document.getElementById('acc-tx-to-account');
+    if(s1){ const v=s1.value; s1.innerHTML=opts||'<option value="">(crea una cuenta)</option>'; if(v) s1.value=v; }
+    if(s2){ const v=s2.value; s2.innerHTML=opts||'<option value="">(crea una cuenta)</option>'; if(v) s2.value=v; }
+  };
+  const renderAccounting = () => {
+    if (!document.getElementById('accounting-section')) return;
+    if (accMonthFilter===null) accMonthFilter = accCurrentMonth();
+    const mf=document.getElementById('acc-month-filter'); if(mf && document.activeElement!==mf) mf.value = accMonthFilter||'';
+    accFillAccountSelects();
+    // Cuentas
+    const al=document.getElementById('acc-accounts-list');
+    if(al){
+      al.innerHTML = (state.accounts||[]).length
+        ? state.accounts.map(a=>`<div class="flex justify-between items-center p-2 border rounded-lg bg-white">
+            <div><span class="font-semibold text-gray-800">${a.name}</span><p class="text-[11px] text-gray-400">Saldo inicial: ${fmtCur(a.initial||0)}</p></div>
+            <div class="flex items-center gap-3"><span class="font-mono font-bold ${accountBalance(a.id)>=0?'text-green-700':'text-red-600'}">${fmtCur(accountBalance(a.id))}</span>
+              <button type="button" data-accid="${a.id}" class="acc-account-del text-red-500 font-bold px-1" title="Eliminar cuenta">✕</button></div>
+          </div>`).join('')
+        : '<p class="text-gray-400 italic text-sm">Aún no hay cuentas. Crea una para registrar transacciones.</p>';
+    }
+    // Monitor (mes filtrado)
+    const tx=accFilteredTx();
+    const ingresos=tx.filter(t=>t.type==='ingreso').reduce((s,t)=>s+(t.amount||0),0);
+    const gastos=tx.filter(t=>t.type==='gasto').reduce((s,t)=>s+(t.amount||0),0);
+    const inv=getInventoryTotalValue();
+    const resultado=ingresos-gastos;
+    const mon=document.getElementById('acc-monitor');
+    const card=(label,val,cls)=>`<div class="card text-center p-3"><p class="text-[11px] uppercase tracking-wide font-semibold text-gray-500">${label}</p><p class="text-lg font-bold font-mono ${cls}">${fmtCur(val)}</p></div>`;
+    if(mon) mon.innerHTML = card('Ingresos',ingresos,'text-green-700')+card('Gastos',gastos,'text-red-600')+card('Valor Inventario',inv,'text-blue-600')+card('Resultado (Ing-Gas)',resultado,resultado>=0?'text-green-700':'text-red-600');
+    // Relación ingresos + inventario vs gastos
+    const rel=document.getElementById('acc-relation');
+    if(rel){
+      const left=ingresos+inv; const diff=left-gastos; const ratio=gastos>0?(left/gastos):0;
+      const pct=left+gastos>0?Math.round(left/(left+gastos)*100):50;
+      rel.innerHTML=`<h3 class="text-lg font-bold text-gray-800 mb-1">Relación: (Ingresos + Valor Inventario) vs Gastos</h3>
+        <p class="text-xs text-gray-500 mb-3">${accMonthFilter?('Mes '+accMonthFilter):'Todos los meses'} · el valor de inventario es el actual.</p>
+        <div class="flex flex-wrap justify-between gap-4 mb-3">
+          <div><p class="text-xs text-gray-500">Ingresos + Inventario</p><p class="text-xl font-bold text-green-700 font-mono">${fmtCur(left)}</p><p class="text-[11px] text-gray-400">${fmtCur(ingresos)} + ${fmtCur(inv)}</p></div>
+          <div><p class="text-xs text-gray-500">Gastos</p><p class="text-xl font-bold text-red-600 font-mono">${fmtCur(gastos)}</p></div>
+          <div><p class="text-xs text-gray-500">Diferencia</p><p class="text-xl font-bold font-mono ${diff>=0?'text-green-700':'text-red-600'}">${fmtCur(diff)}</p></div>
+          <div><p class="text-xs text-gray-500">Cobertura</p><p class="text-xl font-bold text-gray-700 font-mono">${ratio?ratio.toFixed(2)+'x':'—'}</p></div>
+        </div>
+        <div class="w-full h-4 rounded-full overflow-hidden bg-red-200 flex"><div class="h-full bg-green-500" style="width:${pct}%"></div></div>`;
+    }
+    // Movimientos
+    const list=document.getElementById('acc-tx-list');
+    const cnt=document.getElementById('acc-tx-count');
+    if(cnt) cnt.textContent = `${tx.length} movimiento(s) ${accMonthFilter?('en '+accMonthFilter):'(todos los meses)'}`;
+    if(list){
+      list.innerHTML = tx.length ? tx.map(t=>{
+        const color = t.type==='ingreso'?'text-green-700':(t.type==='gasto'?'text-red-600':'text-blue-600');
+        const sign = t.type==='ingreso'?'+':(t.type==='gasto'?'−':'');
+        const badge = t.type==='ingreso'?'bg-green-100 text-green-700':(t.type==='gasto'?'bg-red-100 text-red-700':'bg-blue-100 text-blue-700');
+        const cuentas = t.type==='transferencia' ? `${accName(t.accountId)} → ${accName(t.toAccountId)}` : accName(t.accountId);
+        return `<div class="flex justify-between items-start p-2 border rounded-lg bg-white gap-2">
+          <div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${badge}">${t.type.toUpperCase()}</span>
+            <span class="text-xs text-gray-400">${t.date}</span>${t.category?`<span class="text-[10px] text-gray-500 bg-gray-100 px-1.5 rounded">${t.category}</span>`:''}</div>
+            <p class="text-sm text-gray-700 mt-0.5">${cuentas}${t.description?` · ${t.description}`:''}</p></div>
+          <div class="flex items-center gap-2 shrink-0"><span class="font-mono font-bold ${color}">${sign}${fmtCur(t.amount||0)}</span>
+            <button type="button" data-txid="${t.id}" class="acc-tx-del text-red-500 font-bold px-1" title="Eliminar">✕</button></div>
+        </div>`;
+      }).join('') : '<p class="text-gray-400 italic text-sm">No hay movimientos en este periodo.</p>';
+    }
+  };
+  const accSetTxTypeUI = () => {
+    const type=document.getElementById('acc-tx-type').value;
+    const toWrap=document.getElementById('acc-tx-to-wrap');
+    const lbl=document.getElementById('acc-tx-account-label');
+    if(type==='transferencia'){ toWrap?.classList.remove('hidden'); if(lbl) lbl.textContent='Cuenta origen'; }
+    else { toWrap?.classList.add('hidden'); if(lbl) lbl.textContent='Cuenta'; }
+  };
+  const handleAddAccount = () => {
+    const name=(document.getElementById('acc-account-name').value||'').trim();
+    if(!name) return;
+    const initial=parseFloat(document.getElementById('acc-account-initial').value)||0;
+    const ns=JSON.parse(JSON.stringify(state)); ns.accounts.push({id:`acc-${Date.now()}`,name,initial}); updateState(ns);
+    document.getElementById('acc-account-name').value=''; document.getElementById('acc-account-initial').value='';
+    renderAccounting();
+  };
+  const handleAddTransaction = () => {
+    const type=document.getElementById('acc-tx-type').value;
+    const date=document.getElementById('acc-tx-date').value;
+    const amount=parseFloat(document.getElementById('acc-tx-amount').value)||0;
+    const accountId=document.getElementById('acc-tx-account').value;
+    const toAccountId=document.getElementById('acc-tx-to-account').value;
+    const category=(document.getElementById('acc-tx-category').value||'').trim();
+    const description=(document.getElementById('acc-tx-desc').value||'').trim();
+    const msg=document.getElementById('acc-tx-msg');
+    const showMsg=(t,ok)=>{ if(msg){ msg.textContent=t; msg.className='text-sm mt-2 '+(ok?'text-green-700':'text-red-700'); } };
+    if(!(state.accounts||[]).length){ showMsg('Primero crea al menos una cuenta.',false); return; }
+    if(!date||amount<=0||!accountId){ showMsg('Completa fecha, monto y cuenta.',false); return; }
+    if(type==='transferencia'){ if(!toAccountId){ showMsg('Selecciona la cuenta destino.',false); return; } if(toAccountId===accountId){ showMsg('La cuenta origen y destino deben ser distintas.',false); return; } }
+    const ns=JSON.parse(JSON.stringify(state));
+    ns.transactions.push({id:`tx-${Date.now()}`,type,date,amount,accountId,toAccountId:type==='transferencia'?toAccountId:null,category,description});
+    updateState(ns);
+    document.getElementById('acc-tx-amount').value=''; document.getElementById('acc-tx-category').value=''; document.getElementById('acc-tx-desc').value='';
+    showMsg('Transacción registrada.',true); setTimeout(()=>{ if(msg) msg.textContent=''; },1500);
+    renderAccounting();
+  };
+  const setupAccountingListeners = () => {
+    const on=(id,ev,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener(ev,fn); };
+    on('acc-account-add','click',handleAddAccount);
+    on('acc-tx-add','click',handleAddTransaction);
+    on('acc-tx-type','change',accSetTxTypeUI);
+    on('acc-month-filter','change',e=>{ accMonthFilter=e.target.value; renderAccounting(); });
+    on('acc-month-all','click',()=>{ accMonthFilter=''; renderAccounting(); });
+    on('acc-accounts-list','click',e=>{ if(e.target.classList.contains('acc-account-del')){ const id=e.target.dataset.accid; const ns=JSON.parse(JSON.stringify(state)); ns.accounts=ns.accounts.filter(a=>a.id!==id); updateState(ns); renderAccounting(); } });
+    on('acc-tx-list','click',e=>{ if(e.target.classList.contains('acc-tx-del')){ const id=e.target.dataset.txid; const ns=JSON.parse(JSON.stringify(state)); ns.transactions=ns.transactions.filter(t=>t.id!==id); updateState(ns); renderAccounting(); } });
+    const dt=document.getElementById('acc-tx-date'); if(dt && !dt.value) dt.value=new Date().toISOString().slice(0,10);
+    accSetTxTypeUI();
   };
 
   const initClient = async () => {
