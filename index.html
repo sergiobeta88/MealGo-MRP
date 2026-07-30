@@ -1361,6 +1361,7 @@ async function startApp() {
       document.getElementById('generic-modal').classList.add('hidden');
       document.getElementById('modal-body').innerHTML = '';
       document.getElementById('modal-footer').innerHTML = '';
+      editOrderId = null; editDraft = null;
       currentProductionOrder = { items:[] };
     });
     document.getElementById('search-dish-input').addEventListener('input', renderDishesList);
@@ -2905,6 +2906,7 @@ async function startApp() {
             <span class="text-xs text-gray-400 ml-2">${o.shortId} · ${o.date}</span>
             ${contact?`<p class="text-xs text-gray-500">${contact}</p>`:''}</div>
           <div class="flex items-center gap-2">
+            <button type="button" data-orderid="${o.id}" class="menu-order-edit-btn text-xs font-semibold px-2 py-1 rounded-lg bg-blue-500 text-white">Editar</button>
             <button type="button" data-orderid="${o.id}" class="menu-order-pay-btn text-xs font-semibold px-2 py-1 rounded-lg ${pagado?'bg-red-500 text-white':'bg-green-500 text-white'}">${pagado?'Marcar pendiente':'Marcar pagado'}</button>
             <button type="button" data-orderid="${o.id}" class="menu-order-delete-btn text-red-500 font-bold px-1" title="Eliminar pedido">✕</button>
           </div>
@@ -2921,6 +2923,116 @@ async function startApp() {
     ns.menuOrders=ns.menuOrders.filter(o=>o.id!==id);
     ns.customerOrders=ns.customerOrders.filter(o=>o.menuOrderId!==id); // quita también el registro en Compras
     updateState(ns);
+  };
+
+  // ── Edición de pedidos recibidos ──
+  let editOrderId = null, editDraft = null;
+  const openEditMenuOrder = id => {
+    const mo = state.menuOrders.find(o=>o.id===id); if(!mo) return;
+    editOrderId = id;
+    editDraft = {
+      clientName:mo.clientName||'', clientFirstName:mo.clientFirstName||'', clientLastName:mo.clientLastName||'',
+      clientEmail:mo.clientEmail||'', clientPhone:mo.clientPhone||'', clientAddress:mo.clientAddress||'',
+      clientId:mo.clientId||null, clientKind:mo.clientKind||null, date:mo.date||new Date().toISOString().slice(0,10), paid:!!mo.paid,
+      pedidos:(mo.pedidos||[]).map(p=>{
+        const item=state.menu.find(m=>m.id===p.itemId);
+        const dishIds=Array.isArray(p.itemDishIds)?p.itemDishIds:[];
+        const excluded = item ? itemDishesFor(item).filter(d=>!d.final && !dishIds.includes(d.id)).map(d=>d.id) : [];
+        return { itemId:p.itemId, excluded, adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), comment:p.comment||'', customOpen:false, adicOpen:false };
+      })
+    };
+    renderEditMenuOrder();
+    document.getElementById('generic-modal').classList.remove('hidden');
+  };
+  const renderEditPedidoBlock = (p,i) => {
+    const opts = `<option value="">— Selecciona un plato —</option>` + activeMenu().map(m=>`<option value="${m.id}" ${p.itemId===m.id?'selected':''}>${m.name} — ${fmtCur(m.price)}</option>`).join('');
+    const item = state.menu.find(m=>m.id===p.itemId);
+    // personalización
+    let customHtml='';
+    if (item) {
+      const comps = itemDishesFor(item); const optional = comps.filter(d=>!d.final);
+      if (optional.length) {
+        const btn = `<button type="button" data-idx="${i}" class="edit-personalizar-btn text-blue-600 text-sm font-semibold">${p.customOpen?'▲ Ocultar personalización':'✏️ Personalizar plato'}</button>`;
+        let list='';
+        if (p.customOpen) list = `<div class="mt-2 p-2 bg-white border rounded-lg">${comps.map(d=>{ const kept=d.final||!(p.excluded||[]).includes(d.id); const ing=compDishIngText(d); return `<label class="flex items-center gap-2 text-sm py-0.5 ${d.final?'text-gray-400':'cursor-pointer'}"><input type="checkbox" data-idx="${i}" data-dishid="${d.id}" class="edit-custom-check accent-orange-500" ${kept?'checked':''} ${d.final?'disabled':''}><span>${d.name}${ing?` <span class="text-gray-500">(${ing})</span>`:''}${d.final?' (base)':''}</span></label>`; }).join('')}</div>`;
+        customHtml = `<div class="mb-2">${btn}${list}</div>`;
+      }
+    }
+    // adicionales
+    const adx=availableAdicionales();
+    let adicSection;
+    if(!adx.length){ adicSection='<p class="text-xs text-gray-400 italic">No hay adicionales.</p>'; }
+    else {
+      const sel=p.adicionales.length;
+      const abtn=`<button type="button" data-idx="${i}" class="edit-adic-toggle-btn w-full flex justify-between items-center py-2 px-3 bg-white border rounded-lg font-semibold text-sm text-gray-700"><span>➕ Adicionales${sel?` <span class="text-orange-500">(${sel})</span>`:''}</span><span class="text-gray-400">${p.adicOpen?'▲':'▾'}</span></button>`;
+      let alist='';
+      if(p.adicOpen) alist=`<div class="mt-1 p-2 bg-white border rounded-lg max-h-48 overflow-y-auto">${adx.map(a=>{ const ch=p.adicionales.some(x=>x.dishId===a.dishId)?'checked':''; const ing=adicIngredientsText(a); return `<label class="flex items-center gap-2 text-sm cursor-pointer py-0.5"><input type="checkbox" data-idx="${i}" data-dishid="${a.dishId}" class="edit-adic-check accent-orange-500" ${ch}><span>${adicDisplayName(a)}${ing?` <span class="text-gray-500">(${ing})</span>`:''} <span class="text-gray-400">(${fmtCur(a.price)})</span></span></label>`; }).join('')}</div>`;
+      adicSection=abtn+alist;
+    }
+    const disc = pedidoDiscountApplies(p);
+    const discNote = disc?`<p class="text-xs text-green-600 mb-1">Con descuento: ${fmtCur(pedidoItemPrice(p))} <span class="line-through text-gray-400">${fmtCur(pedidoItemBasePrice(p))}</span></p>`:'';
+    return `<div class="p-3 border rounded-lg bg-gray-50 mb-3">
+      <div class="flex justify-between items-center mb-2"><h4 class="font-bold text-gray-800">Pedido ${i+1}</h4>
+        <div class="flex items-center gap-2"><span class="font-mono font-semibold text-orange-500">${fmtCur(pedidoSubtotal(p))}</span>
+          <button type="button" data-idx="${i}" class="edit-remove-pedido text-red-500 font-bold px-1" title="Quitar pedido">✕</button></div></div>
+      <div class="mb-1"><label class="block text-xs font-medium text-gray-600 mb-1">Plato principal</label>
+        <select data-idx="${i}" class="edit-plato-select block w-full border-gray-300 rounded-md shadow-sm text-sm">${opts}</select></div>
+      ${discNote}${customHtml}
+      <div class="mb-2">${adicSection}</div>
+      <div><label class="block text-xs font-medium text-gray-600 mb-1">Comentarios</label>
+        <textarea data-idx="${i}" rows="2" class="edit-comment-input block w-full border-gray-300 rounded-md shadow-sm text-sm">${p.comment||''}</textarea></div>
+    </div>`;
+  };
+  const renderEditMenuOrder = () => {
+    const mt=document.getElementById('modal-title'); if(mt) mt.textContent='Editar Pedido Recibido';
+    const body=document.getElementById('modal-body'); if(!body) return;
+    const d=editDraft;
+    let total=0; d.pedidos.forEach(p=>{ total+=pedidoSubtotal(p); });
+    const delivery = ((state.deliveryCost||0)>0 && d.pedidos.length<4) ? (state.deliveryCost||0) : 0;
+    total+=delivery;
+    body.innerHTML = `
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <div><label class="block text-xs font-medium text-gray-600">Nombre</label><input data-field="clientFirstName" class="edit-order-field mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" value="${(d.clientFirstName||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="block text-xs font-medium text-gray-600">Apellido</label><input data-field="clientLastName" class="edit-order-field mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" value="${(d.clientLastName||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="block text-xs font-medium text-gray-600">Correo</label><input data-field="clientEmail" class="edit-order-field mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" value="${(d.clientEmail||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="block text-xs font-medium text-gray-600">WhatsApp</label><input data-field="clientPhone" class="edit-order-field mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" value="${(d.clientPhone||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="block text-xs font-medium text-gray-600">Dirección</label><input data-field="clientAddress" class="edit-order-field mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" value="${(d.clientAddress||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="block text-xs font-medium text-gray-600">Fecha</label><input type="date" data-field="date" class="edit-order-field mt-1 block w-full border-gray-300 rounded-md shadow-sm text-sm" value="${d.date||''}"></div>
+      </div>
+      <div id="edit-pedidos-cont">${d.pedidos.map((p,i)=>renderEditPedidoBlock(p,i)).join('')}</div>
+      <button type="button" id="edit-add-pedido" class="text-blue-600 font-semibold text-sm mb-2">＋ Agregar otro pedido</button>
+      <div class="border-t pt-2 mt-2 text-right"><p class="text-sm text-gray-500">Domicilio: ${fmtCur(delivery)}</p><p class="text-lg font-bold text-gray-800">Total: <span class="font-mono">${fmtCur(total)}</span></p></div>`;
+    const footer=document.getElementById('modal-footer');
+    if(footer) footer.innerHTML=`<button type="button" id="edit-order-cancel" class="py-2 px-4 rounded-lg font-semibold btn-secondary">Cancelar</button><button type="button" id="edit-order-save" class="py-2 px-4 rounded-lg font-semibold btn-primary">Guardar cambios</button>`;
+  };
+  const closeEditMenuOrder = () => { editOrderId=null; editDraft=null; document.getElementById('generic-modal').classList.add('hidden'); const f=document.getElementById('modal-footer'); if(f) f.innerHTML=''; };
+  const saveEditMenuOrder = () => {
+    if(!editOrderId||!editDraft) return;
+    const d=editDraft;
+    if(!d.pedidos.length){ alert('El pedido debe tener al menos un plato.'); return; }
+    if(d.pedidos.some(p=>!p.itemId)){ alert('Selecciona el plato principal en todos los pedidos.'); return; }
+    const pedidos=d.pedidos.map(p=>{
+      const m=state.menu.find(x=>x.id===p.itemId);
+      return { itemId:p.itemId, itemName:m?m.name:'(plato)', itemPrice:pedidoItemPrice(p),
+        itemPriceOriginal:m?(m.price||0):0, discountApplied:pedidoDiscountApplies(p),
+        itemDishIds:effectivePedidoDishIds(p,m), comment:(p.comment||'').trim(),
+        adicionales:(p.adicionales||[]).map(a=>({dishId:a.dishId,name:a.name||adicName(a.dishId),price:a.price})), subtotal:pedidoSubtotal(p) };
+    });
+    let total=pedidos.reduce((s,p)=>s+p.subtotal,0);
+    const delivery=((state.deliveryCost||0)>0 && pedidos.length<4)?(state.deliveryCost||0):0;
+    total+=delivery;
+    const name=`${d.clientFirstName||''} ${d.clientLastName||''}`.trim();
+    const ns=JSON.parse(JSON.stringify(state));
+    const mo=ns.menuOrders.find(o=>o.id===editOrderId); if(!mo){ closeEditMenuOrder(); return; }
+    Object.assign(mo,{ clientName:name||mo.clientName, clientFirstName:d.clientFirstName, clientLastName:d.clientLastName,
+      clientEmail:d.clientEmail, clientPhone:d.clientPhone, clientAddress:d.clientAddress, date:d.date,
+      pedidos, deliveryCost:delivery, total });
+    // Regenerar el registro en Compras/Producción
+    ns.customerOrders=ns.customerOrders.filter(o=>o.menuOrderId!==editOrderId);
+    appendPurchaseFromMenuOrder(ns, mo);
+    updateState(ns);
+    closeEditMenuOrder();
+    renderMenuModule();
   };
 
   // El administrador recibe los pedidos que los clientes dejaron en la zona pública
@@ -3460,9 +3572,32 @@ async function startApp() {
     // pedidos recibidos: eliminar
     on('menu-orders-received','click',e=>{
       if(e.target.classList.contains('menu-order-delete-btn')){ handleDeleteMenuOrder(e.target.dataset.orderid); }
+      else if(e.target.classList.contains('menu-order-edit-btn')){ openEditMenuOrder(e.target.dataset.orderid); }
       else if(e.target.classList.contains('menu-order-pay-btn')){ const id=e.target.dataset.orderid, ns=JSON.parse(JSON.stringify(state)); const o=ns.menuOrders.find(x=>x.id===id); if(o){ o.paid=!o.paid; updateState(ns); } }
     });
     on('menu-orders-filter-name','input',renderMenuOrdersReceived);
+    // ── Modal de edición de pedidos (delegado) ──
+    const mbody=document.getElementById('modal-body'), mfoot=document.getElementById('modal-footer');
+    if (mbody) {
+      mbody.addEventListener('change',e=>{ if(!editDraft) return; const t=e.target; const i=+t.dataset.idx;
+        if(t.classList.contains('edit-plato-select')){ const p=editDraft.pedidos[i]; if(p){ p.itemId=t.value; p.excluded=[]; p.customOpen=false; } renderEditMenuOrder(); }
+        else if(t.classList.contains('edit-adic-check')){ const p=editDraft.pedidos[i], did=t.dataset.dishid, a=availableAdicionales().find(x=>x.dishId===did); if(p&&a){ const idx=p.adicionales.findIndex(x=>x.dishId===did); if(t.checked&&idx<0) p.adicionales.push({dishId:a.dishId,name:adicDisplayName(a),price:a.price}); else if(!t.checked&&idx>=0) p.adicionales.splice(idx,1); } renderEditMenuOrder(); }
+        else if(t.classList.contains('edit-custom-check')){ const p=editDraft.pedidos[i], did=t.dataset.dishid; if(p){ if(!Array.isArray(p.excluded)) p.excluded=[]; const idx=p.excluded.indexOf(did); if(!t.checked&&idx<0) p.excluded.push(did); else if(t.checked&&idx>=0) p.excluded.splice(idx,1); } renderEditMenuOrder(); }
+        else if(t.classList.contains('edit-order-field')){ editDraft[t.dataset.field]=t.value; }
+      });
+      mbody.addEventListener('input',e=>{ if(!editDraft) return; const t=e.target;
+        if(t.classList.contains('edit-comment-input')){ const p=editDraft.pedidos[+t.dataset.idx]; if(p) p.comment=t.value; }
+        else if(t.classList.contains('edit-order-field')){ editDraft[t.dataset.field]=t.value; }
+      });
+      mbody.addEventListener('click',e=>{ if(!editDraft) return;
+        const pb=e.target.closest('.edit-personalizar-btn'); const ab=e.target.closest('.edit-adic-toggle-btn'); const rb=e.target.closest('.edit-remove-pedido');
+        if(pb){ const p=editDraft.pedidos[+pb.dataset.idx]; if(p){ p.customOpen=!p.customOpen; renderEditMenuOrder(); } }
+        else if(ab){ const p=editDraft.pedidos[+ab.dataset.idx]; if(p){ p.adicOpen=!p.adicOpen; renderEditMenuOrder(); } }
+        else if(rb){ editDraft.pedidos.splice(+rb.dataset.idx,1); renderEditMenuOrder(); }
+        else if(e.target.id==='edit-add-pedido'){ editDraft.pedidos.push({itemId:'',excluded:[],adicionales:[],comment:'',customOpen:false,adicOpen:false}); renderEditMenuOrder(); }
+      });
+    }
+    if (mfoot) mfoot.addEventListener('click',e=>{ if(e.target.id==='edit-order-save') saveEditMenuOrder(); else if(e.target.id==='edit-order-cancel') closeEditMenuOrder(); });
     on('menu-orders-filter-from','change',renderMenuOrdersReceived);
     on('menu-orders-filter-to','change',renderMenuOrdersReceived);
     on('menu-orders-filter-pay','change',renderMenuOrdersReceived);
