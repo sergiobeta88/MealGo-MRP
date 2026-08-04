@@ -3749,7 +3749,7 @@ async function startApp() {
     const gastosGen=tx.filter(t=>t.type==='gasto').reduce((s,t)=>s+(t.amount||0),0);
     const markup    = mp>0     ? ((ventas-mp)/mp*100)         : null;
     const margenBru = ventas>0 ? ((ventas-mp)/ventas*100)     : null;
-    const margenNet = ventas>0 ? ((ventas-gastosGen)/ventas*100) : null;
+    const margenNet = ventas>0 ? ((ventas-gastosGen+inv)/ventas*100) : null;
     const pmon=document.getElementById('acc-profit');
     if(pmon){
       const cats=(state.txCategories||[]).map(c=>c.toLowerCase());
@@ -3767,7 +3767,7 @@ async function startApp() {
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           ${ind('Markup / Recargo', markup, '(Ventas − Materia prima) / Materia prima')}
           ${ind('Margen bruto', margenBru, '(Ventas − Materia prima) / Ventas')}
-          ${ind('Margen neto', margenNet, '(Ventas − Gastos generales) / Ventas')}
+          ${ind('Margen neto', margenNet, '(Ventas − Gastos generales + Inventario) / Ventas')}
         </div>`;
     }
     // Movimientos
