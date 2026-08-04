@@ -1696,7 +1696,8 @@ async function startApp() {
       if (g.clients && g.clients.length) {
         const label = g.isFinal ? 'Clientes que lo pidieron:' : 'Pedido por (plato final que acompaña):';
         const lis = g.clients.map((cc,ci)=>{
-          const txt = g.isFinal ? cc.client : `${cc.client}${cc.final?` (con ${cc.final})`:''}`;
+          const marca = cc.adicional ? ' · <span class="text-orange-600 font-semibold">adicional</span>' : ' · <span class="text-gray-500">por defecto</span>';
+          const txt = g.isFinal ? cc.client : `${cc.client}${cc.final?` (con ${cc.final})`:''}${marca}`;
           const ck = `c4|${g.date}|${g.id}|${ci}|${cc.client}`;
           return `<label class="flex items-center gap-2 py-0.5 text-[11px] cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span>${txt}</span></label>`;
         }).join('');
@@ -1761,17 +1762,17 @@ async function startApp() {
     out += rangeHtml;
     // Clientes por plato
     const dishClients={};
-    const addClient=(dishId,client,finalName)=>{ (dishClients[dishId]=dishClients[dishId]||[]).push({client,final:finalName||''}); };
+    const addClient=(dishId,client,finalName,isAdic)=>{ (dishClients[dishId]=dishClients[dishId]||[]).push({client,final:finalName||'',adicional:!!isAdic}); };
     orders.forEach(o=>{
       const client=o.clientName||'Sin cliente';
       if (Array.isArray(o.menuPedidos) && o.menuPedidos.length) {
         o.menuPedidos.forEach(ped=>{
           const finalDish=ped.dishes.find(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return d && d.dishType==='final'; });
           const finalName=finalDish?finalDish.name:(ped.itemName||'');
-          ped.dishes.forEach(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); const isFinal=d&&d.dishType==='final'; addClient(dd.id, client, isFinal?'':finalName); });
+          ped.dishes.forEach(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); const isFinal=d&&d.dishType==='final'; addClient(dd.id, client, isFinal?'':finalName, !!dd.adicional); });
         });
       } else {
-        (Array.isArray(o.items)?o.items:[]).forEach(it=>addClient(it.id, client, ''));
+        (Array.isArray(o.items)?o.items:[]).forEach(it=>addClient(it.id, client, '', false));
       }
     });
     // Listado consolidado de preparaciones
@@ -2534,12 +2535,12 @@ async function startApp() {
       theme:'grid',headStyles:{fillColor:[249,115,22],fontSize:8},styles:{fontSize:7}});
     ly=doc.autoTable.previous.finalY+8;
     // 2) Clientes por plato + agrupación
-    const dishClients={}; const addC=(id2,c,f)=>{(dishClients[id2]=dishClients[id2]||[]).push(f?`${c} (con ${f})`:c);};
+    const dishClients={}; const addC=(id2,c,f,ad)=>{ const mk=ad?' [adicional]':(f?' [por defecto]':''); (dishClients[id2]=dishClients[id2]||[]).push(f?`${c} (con ${f})${mk}`:`${c}${mk}`); };
     orders.forEach(o=>{ const client=o.clientName||'Sin cliente';
       if(Array.isArray(o.menuPedidos)&&o.menuPedidos.length){ o.menuPedidos.forEach(ped=>{
         const fd=ped.dishes.find(dd=>{const d=state.dishes.find(x=>x.id===dd.id);return d&&d.dishType==='final';}); const fn=fd?fd.name:(ped.itemName||'');
-        ped.dishes.forEach(dd=>{const d=state.dishes.find(x=>x.id===dd.id);const isF=d&&d.dishType==='final';addC(dd.id,client,isF?'':fn);}); });
-      } else { (Array.isArray(o.items)?o.items:[]).forEach(it=>addC(it.id,client,'')); } });
+        ped.dishes.forEach(dd=>{const d=state.dishes.find(x=>x.id===dd.id);const isF=d&&d.dishType==='final';addC(dd.id,client,isF?'':fn,!!dd.adicional);}); });
+      } else { (Array.isArray(o.items)?o.items:[]).forEach(it=>addC(it.id,client,'',false)); } });
     const dishGroups={};
     orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{ const d=state.dishes.find(x=>x.id===it.id);
       if(!dishGroups[it.id]) dishGroups[it.id]={id:it.id,name:d?d.name:it.name,dishType:d?(d.dishType||'final'):'final',totalQty:0};
