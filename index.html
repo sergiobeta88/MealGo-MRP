@@ -796,10 +796,13 @@
     <section id="accounting-section" class="hidden space-y-6">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <h2 class="text-3xl font-bold text-gray-800">Contabilidad</h2>
-        <div class="flex items-end gap-2">
-          <div><label class="block text-xs font-medium text-gray-500">Mes</label>
-            <input type="month" id="acc-month-filter" class="mt-1 block border-gray-300 rounded-md shadow-sm text-sm"></div>
-          <button type="button" id="acc-month-all" class="py-2 px-3 rounded-lg text-xs font-semibold text-blue-600">Ver todos</button>
+        <div class="flex items-end gap-2 flex-wrap">
+          <div><label class="block text-xs font-medium text-gray-500">Desde</label>
+            <input type="date" id="acc-from" class="mt-1 block border-gray-300 rounded-md shadow-sm text-sm"></div>
+          <div><label class="block text-xs font-medium text-gray-500">Hasta</label>
+            <input type="date" id="acc-to" class="mt-1 block border-gray-300 rounded-md shadow-sm text-sm"></div>
+          <button type="button" id="acc-range-month" class="py-2 px-3 rounded-lg text-xs font-semibold text-gray-600">Mes actual</button>
+          <button type="button" id="acc-range-all" class="py-2 px-3 rounded-lg text-xs font-semibold text-blue-600">Ver todo</button>
         </div>
       </div>
 
@@ -3663,8 +3666,11 @@ async function startApp() {
   // ══════════════════════════════════
   //   MÓDULO DE CONTABILIDAD
   // ══════════════════════════════════
-  let accMonthFilter = null; // 'YYYY-MM' o '' (todos); null = aún sin inicializar
-  const accCurrentMonth = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+  let accFrom = null, accTo = null; // null = aún sin inicializar
+  const accMonthRange = () => { const d=new Date(); const y=d.getFullYear(), m=d.getMonth();
+    const first=`${y}-${String(m+1).padStart(2,'0')}-01`; const last=new Date(y,m+1,0);
+    return { from:first, to:`${y}-${String(m+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}` }; };
+  const accRangeLabel = () => (accFrom||accTo) ? `${accFrom||'inicio'} → ${accTo||'hoy'}` : 'Todos los movimientos';
   const getInventoryTotalValue = () => (state.ingredients||[]).reduce((t,ing)=>t+(ing.inventoryQty||0)*getInventoryUnitCost(ing),0);
   const accName = id => { const a=(state.accounts||[]).find(x=>x.id===id); return a?a.name:'(cuenta eliminada)'; };
   const accountBalance = accId => {
@@ -3677,8 +3683,8 @@ async function startApp() {
     return bal;
   };
   const accFilteredTx = () => {
-    const m=accMonthFilter;
-    return (state.transactions||[]).filter(t=> !m || (t.date||'').startsWith(m)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    return (state.transactions||[]).filter(t=>{ const d=t.date||''; if(accFrom && d<accFrom) return false; if(accTo && d>accTo) return false; return true; })
+      .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   };
   const accFillAccountSelects = () => {
     const opts = (state.accounts||[]).map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
@@ -3688,8 +3694,9 @@ async function startApp() {
   };
   const renderAccounting = () => {
     if (!document.getElementById('accounting-section')) return;
-    if (accMonthFilter===null) accMonthFilter = accCurrentMonth();
-    const mf=document.getElementById('acc-month-filter'); if(mf && document.activeElement!==mf) mf.value = accMonthFilter||'';
+    if (accFrom===null && accTo===null) { const r=accMonthRange(); accFrom=r.from; accTo=r.to; }
+    const fEl=document.getElementById('acc-from'); if(fEl && document.activeElement!==fEl) fEl.value = accFrom||'';
+    const tEl=document.getElementById('acc-to'); if(tEl && document.activeElement!==tEl) tEl.value = accTo||'';
     accFillAccountSelects();
     // Categorías
     const catSel=document.getElementById('acc-tx-category');
@@ -3726,7 +3733,7 @@ async function startApp() {
       const left=ingresos+inv; const diff=left-gastos; const ratio=gastos>0?(left/gastos):0;
       const pct=left+gastos>0?Math.round(left/(left+gastos)*100):50;
       rel.innerHTML=`<h3 class="text-lg font-bold text-gray-800 mb-1">Relación: (Ingresos + Valor Inventario) vs Gastos</h3>
-        <p class="text-xs text-gray-500 mb-3">${accMonthFilter?('Mes '+accMonthFilter):'Todos los meses'} · el valor de inventario es el actual.</p>
+        <p class="text-xs text-gray-500 mb-3">${accRangeLabel()} · el valor de inventario es el actual.</p>
         <div class="flex flex-wrap justify-between gap-4 mb-3">
           <div><p class="text-xs text-gray-500">Ingresos + Inventario</p><p class="text-xl font-bold text-green-700 font-mono">${fmtCur(left)}</p><p class="text-[11px] text-gray-400">${fmtCur(ingresos)} + ${fmtCur(inv)}</p></div>
           <div><p class="text-xs text-gray-500">Gastos</p><p class="text-xl font-bold text-red-600 font-mono">${fmtCur(gastos)}</p></div>
@@ -3735,28 +3742,38 @@ async function startApp() {
         </div>
         <div class="w-full h-4 rounded-full overflow-hidden bg-red-200 flex"><div class="h-full bg-green-500" style="width:${pct}%"></div></div>`;
     }
-    // Monitor de ganancia: ventas vs materia prima
+    // Monitor de ganancia: markup, margen bruto y margen neto
     const CAT_VENTAS='ingresos por ventas', CAT_MP='gastos de materia prima';
     const ventas=tx.filter(t=>(t.category||'').toLowerCase()===CAT_VENTAS).reduce((s,t)=>s+(t.amount||0),0);
     const mp=tx.filter(t=>(t.category||'').toLowerCase()===CAT_MP).reduce((s,t)=>s+(t.amount||0),0);
-    const utilidad=ventas-mp; const pctGan=mp>0?(utilidad/mp*100):null;
+    const gastosGen=tx.filter(t=>t.type==='gasto').reduce((s,t)=>s+(t.amount||0),0);
+    const markup    = mp>0     ? ((ventas-mp)/mp*100)         : null;
+    const margenBru = ventas>0 ? ((ventas-mp)/ventas*100)     : null;
+    const margenNet = ventas>0 ? ((ventas-gastosGen)/ventas*100) : null;
     const pmon=document.getElementById('acc-profit');
     if(pmon){
       const cats=(state.txCategories||[]).map(c=>c.toLowerCase());
       const hasCats = cats.includes(CAT_VENTAS) && cats.includes(CAT_MP);
-      pmon.innerHTML=`<h3 class="text-lg font-bold text-gray-800 mb-1">Monitor de Ganancia (Ventas vs Materia Prima)</h3>
-        <p class="text-xs text-gray-500 mb-3">${accMonthFilter?('Mes '+accMonthFilter):'Todos los meses'}. Usa las categorías "Ingresos por ventas" y "Gastos de materia prima".${hasCats?'':' <span class="text-orange-600 font-semibold">Crea esas categorías para que el monitor funcione.</span>'}</p>
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-center">
-          <div><p class="text-xs text-gray-500">Ingresos por ventas</p><p class="text-xl font-bold text-green-700 font-mono">${fmtCur(ventas)}</p></div>
-          <div><p class="text-xs text-gray-500">Gastos materia prima</p><p class="text-xl font-bold text-red-600 font-mono">${fmtCur(mp)}</p></div>
-          <div><p class="text-xs text-gray-500">Utilidad</p><p class="text-xl font-bold font-mono ${utilidad>=0?'text-green-700':'text-red-600'}">${fmtCur(utilidad)}</p></div>
-          <div><p class="text-xs text-gray-500">% de ganancia</p><p class="text-2xl font-bold font-mono ${pctGan!=null?(pctGan>=0?'text-green-700':'text-red-600'):'text-gray-400'}">${pctGan!=null?pctGan.toFixed(1)+'%':'—'}</p></div>
+      const pctCls=v=>v==null?'text-gray-400':(v>=0?'text-green-700':'text-red-600');
+      const pctTxt=v=>v==null?'—':v.toFixed(1)+'%';
+      const ind=(label,val,formula)=>`<div class="p-3 rounded-lg border bg-white text-center"><p class="text-xs font-semibold text-gray-600">${label}</p><p class="text-2xl font-bold font-mono ${pctCls(val)}">${pctTxt(val)}</p><p class="text-[10px] text-gray-400 mt-1">${formula}</p></div>`;
+      pmon.innerHTML=`<h3 class="text-lg font-bold text-gray-800 mb-1">Monitor de Ganancia</h3>
+        <p class="text-xs text-gray-500 mb-3">${accRangeLabel()}. Requiere las categorías "Ingresos por ventas" y "Gastos de materia prima".${hasCats?'':' <span class="text-orange-600 font-semibold">Crea esas categorías para que el monitor funcione.</span>'}</p>
+        <div class="flex flex-wrap gap-4 mb-3 text-sm">
+          <span>Ingresos por ventas: <b class="text-green-700 font-mono">${fmtCur(ventas)}</b></span>
+          <span>Gastos de materia prima: <b class="text-red-600 font-mono">${fmtCur(mp)}</b></span>
+          <span>Gastos en general: <b class="text-red-600 font-mono">${fmtCur(gastosGen)}</b></span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          ${ind('Markup / Recargo', markup, '(Ventas − Materia prima) / Materia prima')}
+          ${ind('Margen bruto', margenBru, '(Ventas − Materia prima) / Ventas')}
+          ${ind('Margen neto', margenNet, '(Ventas − Gastos generales) / Ventas')}
         </div>`;
     }
     // Movimientos
     const list=document.getElementById('acc-tx-list');
     const cnt=document.getElementById('acc-tx-count');
-    if(cnt) cnt.textContent = `${tx.length} movimiento(s) ${accMonthFilter?('en '+accMonthFilter):'(todos los meses)'}`;
+    if(cnt) cnt.textContent = `${tx.length} movimiento(s) · ${accRangeLabel()}`;
     if(list){
       list.innerHTML = tx.length ? tx.map(t=>{
         const color = t.type==='ingreso'?'text-green-700':(t.type==='gasto'?'text-red-600':'text-blue-600');
@@ -3892,8 +3909,10 @@ async function startApp() {
     on('acc-cat-add','click',handleAddCategory);
     on('acc-tx-export','click',handleExportAccountingExcel);
     on('acc-tx-type','change',accSetTxTypeUI);
-    on('acc-month-filter','change',e=>{ accMonthFilter=e.target.value; renderAccounting(); });
-    on('acc-month-all','click',()=>{ accMonthFilter=''; renderAccounting(); });
+    on('acc-from','change',e=>{ accFrom=e.target.value||null; renderAccounting(); });
+    on('acc-to','change',e=>{ accTo=e.target.value||null; renderAccounting(); });
+    on('acc-range-month','click',()=>{ const r=accMonthRange(); accFrom=r.from; accTo=r.to; renderAccounting(); });
+    on('acc-range-all','click',()=>{ accFrom=''; accTo=''; renderAccounting(); });
     on('acc-cats-list','click',e=>{ if(e.target.classList.contains('acc-cat-del')){ handleDeleteCategory(e.target.dataset.cat); } });
     on('acc-accounts-list','click',e=>{
       const id=e.target.dataset.accid; if(!id) return;
@@ -3925,7 +3944,7 @@ async function startApp() {
     const ws=XLSX.utils.json_to_sheet(rows, {header:['Fecha','Tipo','Cuenta','Cuenta destino','Categoría','Descripción','Ingreso','Gasto','Transferencia']});
     ws['!cols']=[{wch:12},{wch:14},{wch:16},{wch:16},{wch:16},{wch:28},{wch:12},{wch:12},{wch:14}];
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
-    const label=accMonthFilter||'todos';
+    const label=(accFrom||accTo)?`${accFrom||'inicio'}_a_${accTo||'hoy'}`:'todos';
     XLSX.writeFile(wb, `contabilidad_${label}.xlsx`);
   };
   const initClient = async () => {
