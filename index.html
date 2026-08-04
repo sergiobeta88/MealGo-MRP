@@ -3747,8 +3747,8 @@ async function startApp() {
     const ventas=tx.filter(t=>(t.category||'').toLowerCase()===CAT_VENTAS).reduce((s,t)=>s+(t.amount||0),0);
     const mp=tx.filter(t=>(t.category||'').toLowerCase()===CAT_MP).reduce((s,t)=>s+(t.amount||0),0);
     const gastosGen=tx.filter(t=>t.type==='gasto').reduce((s,t)=>s+(t.amount||0),0);
-    const markup    = mp>0     ? ((ventas-mp)/mp*100)         : null;
-    const margenBru = ventas>0 ? ((ventas-mp)/ventas*100)     : null;
+    const markup    = mp>0     ? ((ventas-mp+inv)/mp*100)         : null;
+    const margenBru = ventas>0 ? ((ventas-mp+inv)/ventas*100)     : null;
     const margenNet = ventas>0 ? ((ventas-gastosGen+inv)/ventas*100) : null;
     const pmon=document.getElementById('acc-profit');
     if(pmon){
@@ -3765,8 +3765,8 @@ async function startApp() {
           <span>Gastos en general: <b class="text-red-600 font-mono">${fmtCur(gastosGen)}</b></span>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          ${ind('Markup / Recargo', markup, '(Ventas − Materia prima) / Materia prima')}
-          ${ind('Margen bruto', margenBru, '(Ventas − Materia prima) / Ventas')}
+          ${ind('Markup / Recargo', markup, '(Ventas − Materia prima + Inventario) / Materia prima')}
+          ${ind('Margen bruto', margenBru, '(Ventas − Materia prima + Inventario) / Ventas')}
           ${ind('Margen neto', margenNet, '(Ventas − Gastos generales + Inventario) / Ventas')}
         </div>`;
     }
