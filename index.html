@@ -1350,6 +1350,9 @@ async function startApp() {
       } else if (cb.classList && cb.classList.contains('prod-yield-input') && cb.dataset.ing){
         const sd=document.getElementById('production-start-date').value, ed=document.getElementById('production-end-date').value;
         setProdMeasure(`y|${sd}|${ed}|${cb.dataset.ing}`, cb.value);
+      } else if (cb.classList && cb.classList.contains('prod-fr-input') && cb.dataset.ing){
+        const sd=document.getElementById('production-start-date').value, ed=document.getElementById('production-end-date').value;
+        setProdMeasure(`f|${sd}|${ed}|${cb.dataset.ing}`, cb.value);
       } else if (cb.classList && cb.classList.contains('prod-produced-input') && cb.dataset.dish){
         const sd=document.getElementById('production-start-date').value, ed=document.getElementById('production-end-date').value;
         setProdMeasure(`p|${sd}|${ed}|${cb.dataset.dish}`, cb.value);
@@ -1656,6 +1659,7 @@ async function startApp() {
     const byDate=orders.reduce((a,o)=>{ (a[o.date]=a[o.date]||[]).push(o); return a; },{});
     const measures = opts.measures || state.prodMeasures || {};
     const yKey = ingId => `y|${sd}|${ed}|${ingId}`;
+    const fKey = ingId => `f|${sd}|${ed}|${ingId}`;
     const pKey = dishId => `p|${sd}|${ed}|${dishId}`;
     const yieldFactors = {};   // se llena tras calcular el total de ingredientes
     const getBI=(dishId,mult)=>{
@@ -1741,21 +1745,24 @@ async function startApp() {
       Object.keys(di).forEach(k=>{ if(!rangeTotalIngs[k]) rangeTotalIngs[k]={...di[k]}; else rangeTotalIngs[k].quantity+=di[k].quantity; });
     }));
     // Factor de rendimiento por ingrediente = peso cocinado / peso requerido (1 si no hay peso cocinado)
-    Object.entries(rangeTotalIngs).forEach(([id,i])=>{ const ck=parseFloat(measures[yKey(id)]); yieldFactors[id]=(ck>0 && i.quantity>0)?(ck/i.quantity):1; });
+    Object.entries(rangeTotalIngs).forEach(([id,i])=>{ const manual=parseFloat(measures[fKey(id)]); if(manual>0){ yieldFactors[id]=manual; } else { const ck=parseFloat(measures[yKey(id)]); yieldFactors[id]=(ck>0 && i.quantity>0)?(ck/i.quantity):1; } });
     let rangeHtml=`<div class="card p-3 mb-8 border-2 border-orange-300 bg-white shadow-lg break-inside-avoid">
       <h4 class="font-bold text-xl text-orange-500 mb-1">Total de Ingredientes a Alistar</h4>
-      <p class="text-xs text-gray-500 mb-3">Consolidado de todo el rango: ${fmtDate(sd)}${sd!==ed?` — ${fmtDate(ed)}`:''}. Registra el peso cocinado para calcular el factor de rendimiento (FR).</p>
-      <div class="hidden sm:flex text-[11px] font-semibold text-gray-500 px-1 gap-2"><span class="flex-1">Ingrediente</span><span class="w-24 text-right">Requerido</span><span class="w-24 text-right">Cocinado</span><span class="w-14 text-right">FR</span></div>
+      <p class="text-xs text-gray-500 mb-3">Consolidado de todo el rango: ${fmtDate(sd)}${sd!==ed?` — ${fmtDate(ed)}`:''}. Registra el peso cocinado para calcular el FR, o escribe el FR manualmente (tiene prioridad).</p>
+      <div class="hidden sm:flex text-[11px] font-semibold text-gray-500 px-1 gap-2"><span class="flex-1">Ingrediente</span><span class="w-24 text-right">Requerido</span><span class="w-24 text-right">Cocinado</span><span class="w-20 text-right">FR manual</span><span class="w-12 text-right">Efec.</span></div>
       <div class="space-y-1">`;
     Object.entries(rangeTotalIngs).sort((a,b)=>a[1].name.localeCompare(b[1].name)).forEach(([id,i])=>{
       const ck=`c1|${sd}|${ed}|${i.name}`;
       const cooked = measures[yKey(id)]!=null ? measures[yKey(id)] : '';
+      const manualFr = measures[fKey(id)]!=null ? measures[fKey(id)] : '';
       const yf = yieldFactors[id];
+      const autoFr = (parseFloat(cooked)>0 && i.quantity>0) ? (parseFloat(cooked)/i.quantity).toFixed(2) : '1.00';
       rangeHtml+=`<div class="flex items-center gap-2 border-b border-gray-100 py-1 text-sm">
         <label class="flex items-center gap-2 flex-1 cursor-pointer min-w-0"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-4 h-4 shrink-0"><span class="prod-line truncate">${i.name}</span></label>
         <span class="w-24 text-right font-mono text-gray-600">${i.quantity.toFixed(2)} ${i.unit}</span>
         <input type="number" min="0" step="1" ${opts.readonly?'disabled':''} data-ing="${id}" class="prod-yield-input w-24 border-gray-300 rounded text-xs text-right font-mono" placeholder="cocinado" value="${cooked}">
-        <span class="w-14 text-right font-mono ${yf!==1?'text-blue-600 font-bold':'text-gray-400'}">${yf.toFixed(2)}</span>
+        <input type="number" min="0" step="0.01" ${opts.readonly?'disabled':''} data-ing="${id}" class="prod-fr-input w-20 border-gray-300 rounded text-xs text-right font-mono" placeholder="auto ${autoFr}" value="${manualFr}">
+        <span class="w-12 text-right font-mono ${yf!==1?'text-blue-600 font-bold':'text-gray-400'}">${yf.toFixed(2)}</span>
       </div>`;
     });
     rangeHtml+=`</div></div>`;
