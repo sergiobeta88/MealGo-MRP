@@ -454,6 +454,10 @@
           <span class="text-sm font-semibold text-orange-700 uppercase tracking-wide">Valor Total del Inventario</span>
           <span id="inventory-total-value" class="text-2xl font-bold text-gray-800 font-mono">—</span>
         </div>
+        <div class="mb-4 flex items-center justify-between flex-wrap gap-2">
+          <p id="inventory-checked-count" class="text-xs text-gray-500"></p>
+          <button type="button" id="inventory-clear-checks" class="py-1.5 px-3 rounded-lg text-xs font-semibold text-blue-600">Limpiar marcas de ajuste</button>
+        </div>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50"><tr>
@@ -1249,7 +1253,7 @@ async function startApp() {
       const same = curKeys.length===nxtKeys.length && nxtKeys.every(k=>prodChecks[k]);
       Object.keys(prodChecks).forEach(k=>delete prodChecks[k]);
       Object.assign(prodChecks, next);
-      if (!same) { try { renderProductionPlanView(); } catch(_){} }
+      if (!same) { try { renderProductionPlanView(); } catch(_){} try { renderInventoryList(); } catch(_){} }
     });
   };
 
@@ -1347,6 +1351,11 @@ async function startApp() {
     document.getElementById('month-filter').addEventListener('change', renderSavedOrders);
     document.getElementById('order-sort-by').addEventListener('change', renderSavedOrders);
     document.getElementById('search-inventory-input').addEventListener('input', renderInventoryList);
+    document.getElementById('inventory-clear-checks').addEventListener('click', ()=>{
+      if(!confirm('¿Quitar todas las marcas de ajuste del inventario?')) return;
+      state.ingredients.forEach(i=>{ const key='inv|'+i.id; if(prodChecks[key]){ delete prodChecks[key]; saveProdCheck(key, false); } });
+      renderInventoryList();
+    });
     document.getElementById('production-start-date').addEventListener('change', ()=>renderProductionPlanView());
     document.getElementById('production-end-date').addEventListener('change', ()=>renderProductionPlanView());
     document.getElementById('save-production-plan-btn').addEventListener('click', handleSaveProductionPlan);
@@ -1916,12 +1925,16 @@ async function startApp() {
     // Monitor: valor total del inventario (todos los ingredientes)
     const totalValue=state.ingredients.reduce((t,ing)=>t+(ing.inventoryQty||0)*getInventoryUnitCost(ing),0);
     const tv=document.getElementById('inventory-total-value'); if(tv) tv.textContent=fmtCur(totalValue);
+    const adjustedCount=state.ingredients.filter(i=>prodChecks['inv|'+i.id]).length;
+    const cc=document.getElementById('inventory-checked-count'); if(cc) cc.textContent=`${adjustedCount} de ${state.ingredients.length} ingredientes marcados como ajustados`;
     const filtered=state.ingredients.filter(i=>i.name.toLowerCase().includes(term));
     if(!filtered.length){ list.innerHTML='<tr><td colspan="6" class="text-center py-4 text-gray-500">No hay ingredientes.</td></tr>'; return; }
     filtered.sort((a,b)=>a.name.localeCompare(b.name)).forEach(ing=>{
       const invValue=(ing.inventoryQty||0)*getInventoryUnitCost(ing);
       const row=document.createElement('tr');
-      row.innerHTML=`<td class="px-6 py-4 whitespace-nowrap">${ing.name}</td>
+      const invAdj = prodChecks['inv|'+ing.id];
+      if (invAdj) row.className='bg-green-50';
+      row.innerHTML=`<td class="px-6 py-4 whitespace-nowrap"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" data-invcheck="${ing.id}" class="inv-check w-4 h-4 shrink-0" ${invAdj?'checked':''} title="Marcar como ajustado"><span>${ing.name}</span></label></td>
         <td class="px-6 py-4 whitespace-nowrap font-bold">${ing.inventoryQty.toFixed(2)}</td>
         <td class="px-6 py-4 whitespace-nowrap">${ing.consumptionUnit}</td>
         <td class="px-6 py-4 whitespace-nowrap text-right font-mono font-semibold">${fmtCur(invValue)}</td>
@@ -1942,6 +1955,12 @@ async function startApp() {
     });
     list.querySelectorAll('.btn-add-purchase').forEach(b=>b.addEventListener('click',e=>handleAddInventoryPurchase(e.target.dataset.id)));
     list.querySelectorAll('.btn-adjust-stock').forEach(b=>b.addEventListener('click',e=>handleAdjustInventoryStock(e.target.dataset.id)));
+    list.querySelectorAll('.inv-check').forEach(cb=>cb.addEventListener('change',e=>{
+      const key='inv|'+e.target.dataset.invcheck;
+      if(e.target.checked) prodChecks[key]=true; else delete prodChecks[key];
+      saveProdCheck(key, e.target.checked);
+      e.target.closest('tr').classList.toggle('bg-green-50', e.target.checked);
+    }));
   };
 
   // ──────────────────── POPULATORS ────────────────────
