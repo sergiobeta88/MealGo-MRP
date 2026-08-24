@@ -1813,8 +1813,9 @@ async function startApp() {
     const finals=[], preps=[];
     Object.values(dishGroups).forEach(g=>{
       const isFinal = g.dishType==='final';
+      const inMain = isFinal || g.dishType==='proteinas';   // las proteínas se muestran junto a los platos principales
       const entry={...g, date:rangeKey, isFinal, clients:(dishClients[g.id]||[]), comps:Object.values(getDirect(g.id,g.totalQty)).sort((a,b)=>a.name.localeCompare(b.name))};
-      (isFinal?finals:preps).push(entry);
+      (inMain?finals:preps).push(entry);
     });
     finals.sort((a,b)=>a.name.localeCompare(b.name));
     preps.sort((a,b)=>a.name.localeCompare(b.name));
@@ -2583,7 +2584,7 @@ async function startApp() {
       if(!dishGroups[it.id]) dishGroups[it.id]={id:it.id,name:d?d.name:it.name,dishType:d?(d.dishType||'final'):'final',totalQty:0};
       dishGroups[it.id].totalQty+=(it.quantity||0); }));
     const finals=[],preps=[];
-    Object.values(dishGroups).forEach(g=>{ (g.dishType==='final'?finals:preps).push(g); });
+    Object.values(dishGroups).forEach(g=>{ ((g.dishType==='final'||g.dishType==='proteinas')?finals:preps).push(g); });
     finals.sort((a,b)=>a.name.localeCompare(b.name)); preps.sort((a,b)=>a.name.localeCompare(b.name));
     ly=chk(ly); doc.setFontSize(13); doc.setTextColor(37,99,235); doc.text('Preparaciones — Platos Principales',14,ly); doc.setTextColor(0,0,0); ly+=3;
     doc.autoTable({startY:ly,head:[['Plato','Und.','Clientes que lo pidieron']],
