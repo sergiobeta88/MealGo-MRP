@@ -1768,8 +1768,8 @@ async function startApp() {
     Object.entries(rangeTotalIngs).forEach(([id,i])=>{ const manual=parseFloat(measures[fKey(id)]); if(manual>0){ yieldFactors[id]=manual; } else { const ck=parseFloat(measures[yKey(id)]); yieldFactors[id]=(ck>0 && i.quantity>0)?(ck/i.quantity):1; } });
     let rangeHtml=`<div class="card p-3 mb-8 border-2 border-orange-300 bg-white shadow-lg break-inside-avoid">
       <h4 class="font-bold text-xl text-orange-500 mb-1">Total de Ingredientes a Alistar</h4>
-      <p class="text-xs text-gray-500 mb-3">Consolidado de todo el rango: ${fmtDate(sd)}${sd!==ed?` — ${fmtDate(ed)}`:''}. Registra el peso cocinado para calcular el FR, o escribe el FR manualmente (tiene prioridad).</p>
-      <div class="hidden sm:flex text-[11px] font-semibold text-gray-500 px-1 gap-2"><span class="flex-1">Ingrediente</span><span class="w-24 text-right">Requerido</span><span class="w-24 text-right">Cocinado</span><span class="w-20 text-right">FR manual</span><span class="w-12 text-right">Efec.</span></div>
+      <p class="text-xs text-gray-500 mb-3">Consolidado de todo el rango: ${fmtDate(sd)}${sd!==ed?` — ${fmtDate(ed)}`:''}. "A alistar" = requerido ajustado por el rendimiento del ingrediente. Registra el peso cocinado para calcular el FR de cocción, o escríbelo manualmente.</p>
+      <div class="hidden sm:flex text-[11px] font-semibold text-gray-500 px-1 gap-2"><span class="flex-1">Ingrediente</span><span class="w-24 text-right">Requerido</span><span class="w-24 text-right">A alistar</span><span class="w-24 text-right">Cocinado</span><span class="w-20 text-right">FR manual</span><span class="w-12 text-right">Efec.</span></div>
       <div class="space-y-1">`;
     Object.entries(rangeTotalIngs).sort((a,b)=>a[1].name.localeCompare(b[1].name)).forEach(([id,i])=>{
       const ck=`c1|${sd}|${ed}|${i.name}`;
@@ -1777,9 +1777,13 @@ async function startApp() {
       const manualFr = measures[fKey(id)]!=null ? measures[fKey(id)] : '';
       const yf = yieldFactors[id];
       const autoFr = (parseFloat(cooked)>0 && i.quantity>0) ? (parseFloat(cooked)/i.quantity).toFixed(2) : '1.00';
+      const ingRef = state.ingredients.find(x=>x.id===id);
+      const rendPct = (ingRef && ingRef.yield) ? ingRef.yield : 100;
+      const alistar = rendPct>0 ? (i.quantity/(rendPct/100)) : i.quantity;
       rangeHtml+=`<div class="flex items-center gap-2 border-b border-gray-100 py-1 text-sm">
         <label class="flex items-center gap-2 flex-1 cursor-pointer min-w-0"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-4 h-4 shrink-0"><span class="prod-line truncate">${i.name}</span></label>
-        <span class="w-24 text-right font-mono text-gray-600">${i.quantity.toFixed(2)} ${i.unit}</span>
+        <span class="w-24 text-right font-mono text-gray-500">${i.quantity.toFixed(2)} ${i.unit}</span>
+        <span class="w-24 text-right font-mono ${rendPct!==100?'text-blue-600 font-bold':'text-gray-700'}">${alistar.toFixed(2)} ${i.unit}</span>
         <input type="number" min="0" step="1" ${opts.readonly?'disabled':''} data-ing="${id}" class="prod-yield-input w-24 border-gray-300 rounded text-xs text-right font-mono" placeholder="cocinado" value="${cooked}">
         <input type="number" min="0" step="0.01" ${opts.readonly?'disabled':''} data-ing="${id}" class="prod-fr-input w-20 border-gray-300 rounded text-xs text-right font-mono" placeholder="auto ${autoFr}" value="${manualFr}">
         <span class="w-12 text-right font-mono ${yf!==1?'text-blue-600 font-bold':'text-gray-400'}">${yf.toFixed(2)}</span>
@@ -2392,13 +2396,17 @@ async function startApp() {
     let total=0;
     const items=Object.keys(sli).map(ingId=>{
       const ing=state.ingredients.find(i=>i.id===ingId); if(!ing) return null;
-      const req=sli[ingId].quantity; const inv=ing.inventoryQty||0;
+      const reqRaw=sli[ingId].quantity;
+      const yf=(ing.yield?ing.yield:100)/100;               // rendimiento del ingrediente
+      const req = yf>0 ? reqRaw/yf : reqRaw;                 // cantidad ajustada por rendimiento
+      const inv=ing.inventoryQty||0;
       const miss=Math.max(0,req-inv); let pu=0,pc=0,fpu=0;
       const mpq=ing.minPurchaseQty||1;
       if(miss>0&&ing.consumptionQty>0){ fpu=miss/ing.consumptionQty; if(fpu>0){ pu=Math.ceil(fpu/mpq)*mpq; } pc=pu*ing.purchasePrice; }
       total+=pc;
       return {id:ing.id,name:ing.name,typeId:ing.typeId,unit:ing.consumptionUnit,purchaseUnit:ing.purchaseUnit,
-        requiredQuantity:req,inventoryQty:inv,missingQuantity:miss,missingInPurchaseUnits:fpu,
+        requiredQuantity:reqRaw,requiredAdjusted:req,yieldPct:(ing.yield||100),
+        inventoryQty:inv,missingQuantity:miss,missingInPurchaseUnits:fpu,
         purchaseUnitsToBuy:pu,purchaseCost:pc,isPurchased:false};
     }).filter(Boolean);
     if(items.length){
@@ -2431,7 +2439,7 @@ async function startApp() {
         h+=`<tr class="border-b">
           <td class="px-2 py-2 text-center"><input type="checkbox" data-item-id="${it.id}" class="slc h-5 w-5" ${it.isPurchased?'checked':''} ${l.status==='completed'?'disabled':''}></td>
           <td class="px-2 py-2 whitespace-nowrap">${it.name}</td>
-          <td class="px-2 py-2 text-right font-mono">${it.requiredQuantity.toFixed(2)} ${it.unit}</td>
+          <td class="px-2 py-2 text-right font-mono">${it.requiredQuantity.toFixed(2)} ${it.unit}${(it.yieldPct!=null && it.yieldPct!==100)?`<br><span class="text-[10px] text-blue-600">Ajustado (${it.yieldPct}%): ${(it.requiredAdjusted||it.requiredQuantity).toFixed(2)}</span>`:''}</td>
           <td class="px-2 py-2 text-right font-mono">${it.purchaseUnitsToBuy} x ${it.purchaseUnit}</td>
           <td class="px-2 py-2 text-right font-mono">${fmtCur(it.purchaseCost)}</td>
           <td class="px-2 py-2 text-right font-mono">${it.inventoryQty.toFixed(2)} ${it.unit}</td>
