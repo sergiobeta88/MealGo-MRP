@@ -1367,6 +1367,8 @@ async function startApp() {
       if (cb.classList && cb.classList.contains('prod-check') && cb.dataset.ck){
         if (cb.checked) prodChecks[cb.dataset.ck]=true; else delete prodChecks[cb.dataset.ck];
         saveProdCheck(cb.dataset.ck, cb.checked);   // se sincroniza entre sesiones
+        // marca también cualquier otra casilla con la misma clave (p. ej. el acompañante en su sección)
+        try { document.querySelectorAll('.prod-check').forEach(x=>{ if(x!==cb && x.dataset.ck===cb.dataset.ck) x.checked=cb.checked; }); } catch(_){}
       } else if (cb.classList && cb.classList.contains('prod-yield-input') && cb.dataset.ing){
         const sd=document.getElementById('production-start-date').value, ed=document.getElementById('production-end-date').value;
         setProdMeasure(`y|${sd}|${ed}|${cb.dataset.ing}`, cb.value);
@@ -1720,18 +1722,20 @@ async function startApp() {
       if (g.clients && g.clients.length) {
         const label = g.isFinal ? 'Clientes que lo pidieron:' : 'Pedido por (plato final que acompaña):';
         const lis = g.clients.map((cc,ci)=>{
-          let txt;
           if (g.isFinal) {
-            const accTxt = (cc.accs && cc.accs.length)
-              ? ' — ' + cc.accs.map(a=>`${a.name}${a.adicional?' <span class="text-orange-600 font-semibold">(adic.)</span>':''}`).join(', ')
-              : ' <span class="text-gray-400">(sin acompañantes)</span>';
-            txt = `<b>${cc.client}</b>${accTxt}`;
+            const clientCk = `c4|${g.date}|${g.id}|${ci}|${cc.client}`;
+            const accsHtml = (cc.accs && cc.accs.length)
+              ? cc.accs.map(a=>{ const ack=`c4|${g.date}|${a.id}|${cc.client}`; return `<label class="inline-flex items-center gap-1 mr-3 cursor-pointer"><input type="checkbox" data-ck="${ack}" ${prodChecks[ack]?'checked':''} class="prod-check w-3 h-3 shrink-0"><span>${a.name}${a.adicional?' <span class="text-orange-600 font-semibold">(adic.)</span>':''}</span></label>`; }).join('')
+              : '<span class="text-gray-400">(sin acompañantes)</span>';
+            return `<div class="py-0.5 text-[11px]">
+              <label class="inline-flex items-center gap-2 cursor-pointer font-bold"><input type="checkbox" data-ck="${clientCk}" ${prodChecks[clientCk]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span>${cc.client}</span></label>
+              <div class="ml-5 mt-0.5 flex flex-wrap gap-y-0.5">${accsHtml}</div>
+            </div>`;
           } else {
             const marca = cc.adicional ? ' · <span class="text-orange-600 font-semibold">adicional</span>' : ' · <span class="text-gray-500">por defecto</span>';
-            txt = `${cc.client}${cc.final?` (con ${cc.final})`:''}${marca}`;
+            const ck = `c4|${g.date}|${g.id}|${cc.client}`;   // clave enlazada (sin índice) con la casilla del plato principal
+            return `<label class="flex items-center gap-2 py-0.5 text-[11px] cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span>${cc.client}${cc.final?` (con ${cc.final})`:''}${marca}</span></label>`;
           }
-          const ck = `c4|${g.date}|${g.id}|${ci}|${cc.client}`;
-          return `<label class="flex items-center gap-2 py-0.5 text-[11px] cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span>${txt}</span></label>`;
         }).join('');
         clientsHtml = `<div class="px-2 py-1 border-t border-gray-100 bg-blue-50"><p class="text-[11px] font-semibold text-blue-700 mb-0.5">${label}</p>${lis}</div>`;
       }
@@ -1808,7 +1812,10 @@ async function startApp() {
         o.menuPedidos.forEach(ped=>{
           const finalDish=ped.dishes.find(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return d && d.dishType==='final'; });
           const finalName=finalDish?finalDish.name:(ped.itemName||'');
-          const accs=ped.dishes.filter(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return !(d && d.dishType==='final'); }).map(dd=>({name:dd.name,adicional:!!dd.adicional}));
+          const accOrder = t => ({carbohidratos:0, proteinas:1, preparation:2, adobos:3, ensaladas:4}[t] ?? 2);
+          const accs=ped.dishes.filter(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return !(d && d.dishType==='final'); })
+            .map(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return {id:dd.id,name:dd.name,adicional:!!dd.adicional,dishType:d?(d.dishType||''):''}; })
+            .sort((a,b)=>accOrder(a.dishType)-accOrder(b.dishType) || a.name.localeCompare(b.name));
           ped.dishes.forEach(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); const isFinal=d&&d.dishType==='final'; addClient(dd.id, client, isFinal?'':finalName, !!dd.adicional, isFinal?accs:null); });
         });
       } else {
@@ -2594,7 +2601,10 @@ async function startApp() {
     orders.forEach(o=>{ const client=o.clientName||'Sin cliente';
       if(Array.isArray(o.menuPedidos)&&o.menuPedidos.length){ o.menuPedidos.forEach(ped=>{
         const fd=ped.dishes.find(dd=>{const d=state.dishes.find(x=>x.id===dd.id);return d&&d.dishType==='final';}); const fn=fd?fd.name:(ped.itemName||'');
-        const accs=ped.dishes.filter(dd=>{const d=state.dishes.find(x=>x.id===dd.id);return !(d&&d.dishType==='final');}).map(dd=>({name:dd.name,adicional:!!dd.adicional}));
+        const accOrderP = t => ({carbohidratos:0, proteinas:1, preparation:2, adobos:3, ensaladas:4}[t] ?? 2);
+        const accs=ped.dishes.filter(dd=>{const d=state.dishes.find(x=>x.id===dd.id);return !(d&&d.dishType==='final');})
+          .map(dd=>{const d=state.dishes.find(x=>x.id===dd.id);return {name:dd.name,adicional:!!dd.adicional,dishType:d?(d.dishType||''):''};})
+          .sort((a,b)=>accOrderP(a.dishType)-accOrderP(b.dishType) || a.name.localeCompare(b.name));
         ped.dishes.forEach(dd=>{const d=state.dishes.find(x=>x.id===dd.id);const isF=d&&d.dishType==='final';addC(dd.id,client,isF?'':fn,!!dd.adicional,isF?accs:null);}); });
       } else { (Array.isArray(o.items)?o.items:[]).forEach(it=>addC(it.id,client,'',false,null)); } });
     const dishGroups={};
@@ -3362,7 +3372,9 @@ async function startApp() {
     if(!document.getElementById('menu-order-pedidos').innerHTML){ renderPedidoBlocks(); updateMenuOrderTotal(); }
   };
 
+  let menuOrderSaving = false;
   const handleConfirmMenuOrder = async () => {
+    if (menuOrderSaving) return;   // ya se está guardando: evita pedidos dobles por doble clic
     if (CLIENT_MODE && !orderingOpen()) { applyOrderingWindowUI(); showMenuOrderMsg('<p class="text-red-700 font-semibold">La recepción de pedidos está cerrada en este momento.</p>', false); return; }
     if (!state.menu.length) { showMenuOrderMsg('<p class="text-red-700 font-semibold">El menú no tiene ítems disponibles.</p>', false); return; }
     if (!menuClientKind) { showMenuOrderMsg('<p class="text-red-700 font-semibold">Indica si eres cliente nuevo o si ya eres cliente.</p>', false); return; }
@@ -3400,28 +3412,37 @@ async function startApp() {
       clientEmail:email, clientPhone:whatsapp, clientAddress:address, clientKind:menuClientKind,
       deliveryCost: deliveryAmount(), pedidos, total };
 
-    if (CLIENT_MODE) {
-      // El cliente NO puede escribir en la base del administrador: su pedido va a la zona pública
-      const order = { ...baseOrder, id:`morder-${Date.now()}` };
-      let ok = true;
-      if (window._fbPushOrder) { const key = await window._fbPushOrder(order); ok = !!key; }
-      if (!ok) { showMenuOrderMsg('<p class="text-red-700 font-semibold">No se pudo enviar el pedido. Revisa tu conexión e inténtalo de nuevo.</p>', false); return; }
+    // A partir de aquí empieza el guardado: bloqueamos el botón para evitar envíos dobles
+    menuOrderSaving = true;
+    const cbtn = document.getElementById('menu-order-confirm-btn');
+    const cbtnTxt = cbtn ? cbtn.textContent : '';
+    if (cbtn) { cbtn.disabled = true; cbtn.textContent = 'Enviando pedido…'; cbtn.classList.add('opacity-60','cursor-not-allowed'); }
+    try {
+      if (CLIENT_MODE) {
+        // El cliente NO puede escribir en la base del administrador: su pedido va a la zona pública
+        const order = { ...baseOrder, id:`morder-${Date.now()}` };
+        let ok = true;
+        if (window._fbPushOrder) { const key = await window._fbPushOrder(order); ok = !!key; }
+        if (!ok) { showMenuOrderMsg('<p class="text-red-700 font-semibold">No se pudo enviar el pedido. Revisa tu conexión e inténtalo de nuevo.</p>', false); return; }
+        const emailSent = await sendOrderEmail(order);
+        showOrderConfirmed(order, name, emailSent);
+        resetOrderForm();
+        return;
+      }
+      // Modo administrador: resuelve el cliente por correo (opción B: si es existente, manda el módulo)
+      const ns = JSON.parse(JSON.stringify(state));
+      const client = resolveOrCreateClient(ns, { email, name, lastname, whatsapp, address, kind:menuClientKind });
+      const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id, clientName: clientFullName(client) || baseOrder.clientName };
+      ns.menuOrders.push(order);
+      appendPurchaseFromMenuOrder(ns, order);   // crea el pedido en el módulo de Compras
+      updateState(ns);
       const emailSent = await sendOrderEmail(order);
       showOrderConfirmed(order, name, emailSent);
       resetOrderForm();
-      return;
+    } finally {
+      menuOrderSaving = false;
+      if (cbtn) { cbtn.disabled = false; cbtn.textContent = cbtnTxt; cbtn.classList.remove('opacity-60','cursor-not-allowed'); }
     }
-
-    // Modo administrador: resuelve el cliente por correo (opción B: si es existente, manda el módulo)
-    const ns = JSON.parse(JSON.stringify(state));
-    const client = resolveOrCreateClient(ns, { email, name, lastname, whatsapp, address, kind:menuClientKind });
-    const order = { ...baseOrder, id:`morder-${Date.now()}`, clientId:client.id, clientName: clientFullName(client) || baseOrder.clientName };
-    ns.menuOrders.push(order);
-    appendPurchaseFromMenuOrder(ns, order);   // crea el pedido en el módulo de Compras
-    updateState(ns);
-    const emailSent = await sendOrderEmail(order);
-    showOrderConfirmed(order, name, emailSent);
-    resetOrderForm();
   };
 
   const clientFullName = c => c ? `${c.name||''} ${c.lastname||''}`.trim() : '';
