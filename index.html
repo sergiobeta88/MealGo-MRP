@@ -2419,9 +2419,11 @@ async function startApp() {
       const miss=Math.max(0,req-inv); let pu=0,pc=0,fpu=0;
       const mpq=ing.minPurchaseQty||1;
       if(miss>0&&ing.consumptionQty>0){ fpu=miss/ing.consumptionQty; if(fpu>0){ pu=Math.ceil(fpu/mpq)*mpq; } pc=pu*ing.purchasePrice; }
-      total+=pc;
+      const unitCost = ing.consumptionQty>0 ? ing.purchasePrice/ing.consumptionQty : 0;
+      const adjCost = req*unitCost;   // costo de lo requerido ajustado por rendimiento
+      total+=adjCost;
       return {id:ing.id,name:ing.name,typeId:ing.typeId,unit:ing.consumptionUnit,purchaseUnit:ing.purchaseUnit,
-        requiredQuantity:reqRaw,requiredAdjusted:req,yieldPct:(ing.yield||100),
+        requiredQuantity:reqRaw,requiredAdjusted:req,yieldPct:(ing.yield||100),adjustedCost:adjCost,unitCost:unitCost,
         inventoryQty:inv,missingQuantity:miss,missingInPurchaseUnits:fpu,
         purchaseUnitsToBuy:pu,purchaseCost:pc,isPurchased:false};
     }).filter(Boolean);
@@ -2437,33 +2439,45 @@ async function startApp() {
     const l=state.savedShoppingLists.find(x=>x.id===id); if(!l) return;
     document.getElementById('modal-title').textContent=`Lista de Compras (${l.range.start} - ${l.range.end})`;
     const mb=document.getElementById('modal-body'); const mf=document.getElementById('modal-footer');
-    const grouped=l.items.reduce((a,it)=>{ const k=it.typeId||'untyped'; (a[k]=a[k]||[]).push(it); return a; },{});
+    const isMeat = tid => { const n=(state.ingredientTypes.find(t=>t.id===tid)?.name||'').toLowerCase(); return n.includes('carne')||n.includes('pollo'); };
+    const meatItems = l.items.filter(it=>isMeat(it.typeId));
+    const otherItems = l.items.filter(it=>!isMeat(it.typeId));
+    const grouped=otherItems.reduce((a,it)=>{ const k=it.typeId||'untyped'; (a[k]=a[k]||[]).push(it); return a; },{});
     const skeys=Object.keys(grouped).sort((a,b)=>{ if(a==='untyped') return 1; if(b==='untyped') return -1;
       return (state.ingredientTypes.find(t=>t.id===a)?.name||'').localeCompare(state.ingredientTypes.find(t=>t.id===b)?.name||''); });
+    const unitCostOf = it => { if(it.unitCost!=null) return it.unitCost; const ing=state.ingredients.find(x=>x.id===it.id); return ing?getInventoryUnitCost(ing):0; };
+    const adjCostOf = it => { if(it.adjustedCost!=null) return it.adjustedCost; return (it.requiredAdjusted!=null?it.requiredAdjusted:it.requiredQuantity)*unitCostOf(it); };
+    let shownTotal=0;
+    const rowHtml = it => {
+      const mc=it.missingQuantity>0?'text-red-600 font-bold':'';
+      const ac=adjCostOf(it); shownTotal+=ac;
+      return `<tr class="border-b">
+        <td class="px-2 py-2 text-center"><input type="checkbox" data-item-id="${it.id}" class="slc h-5 w-5" ${it.isPurchased?'checked':''} ${l.status==='completed'?'disabled':''}></td>
+        <td class="px-2 py-2 whitespace-nowrap">${it.name}</td>
+        <td class="px-2 py-2 text-right font-mono">${it.requiredQuantity.toFixed(2)} ${it.unit}${(it.yieldPct!=null && it.yieldPct!==100)?`<br><span class="text-[10px] text-blue-600">Ajustado (${it.yieldPct}%): ${(it.requiredAdjusted||it.requiredQuantity).toFixed(2)}</span>`:''}</td>
+        <td class="px-2 py-2 text-right font-mono text-gray-500">${fmtCur(unitCostOf(it))}/${it.unit}</td>
+        <td class="px-2 py-2 text-right font-mono">${fmtCur(ac)}</td>
+        <td class="px-2 py-2 text-right font-mono">${it.inventoryQty.toFixed(2)} ${it.unit}</td>
+        <td class="px-2 py-2 text-right font-mono ${mc}">${it.missingQuantity.toFixed(2)} ${it.unit}</td>
+      </tr>`;
+    };
     let h=`<div class="overflow-x-auto"><table class="min-w-full text-sm">
       <thead class="bg-gray-50"><tr>
         <th class="px-2 py-2 text-left">Comprado</th><th class="px-2 py-2 text-left">Ingrediente</th>
-        <th class="px-2 py-2 text-right">Requerido</th><th class="px-2 py-2 text-right">A Comprar</th>
-        <th class="px-2 py-2 text-right">Costo</th><th class="px-2 py-2 text-right">Inventario</th>
-        <th class="px-2 py-2 text-right">Faltante</th>
+        <th class="px-2 py-2 text-right">Requerido</th><th class="px-2 py-2 text-right">Costo/Ud.</th>
+        <th class="px-2 py-2 text-right">Costo</th>
+        <th class="px-2 py-2 text-right">Inventario</th><th class="px-2 py-2 text-right">Faltante</th>
       </tr></thead><tbody>`;
+    if (meatItems.length){
+      h+=`<tr><td colspan="7" class="px-2 py-2 bg-red-100 font-bold text-red-800">Carnes y Pollo</td></tr>`;
+      meatItems.sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>{ h+=rowHtml(it); });
+    }
     skeys.forEach(tid=>{
       const gn=(state.ingredientTypes.find(t=>t.id===tid)?.name)||'Sin Tipo';
       h+=`<tr><td colspan="7" class="px-2 py-2 bg-gray-100 font-bold">${gn}</td></tr>`;
-      grouped[tid].sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>{
-        const mc=it.missingQuantity>0?'text-red-600 font-bold':'';
-        h+=`<tr class="border-b">
-          <td class="px-2 py-2 text-center"><input type="checkbox" data-item-id="${it.id}" class="slc h-5 w-5" ${it.isPurchased?'checked':''} ${l.status==='completed'?'disabled':''}></td>
-          <td class="px-2 py-2 whitespace-nowrap">${it.name}</td>
-          <td class="px-2 py-2 text-right font-mono">${it.requiredQuantity.toFixed(2)} ${it.unit}${(it.yieldPct!=null && it.yieldPct!==100)?`<br><span class="text-[10px] text-blue-600">Ajustado (${it.yieldPct}%): ${(it.requiredAdjusted||it.requiredQuantity).toFixed(2)}</span>`:''}</td>
-          <td class="px-2 py-2 text-right font-mono">${it.purchaseUnitsToBuy} x ${it.purchaseUnit}</td>
-          <td class="px-2 py-2 text-right font-mono">${fmtCur(it.purchaseCost)}</td>
-          <td class="px-2 py-2 text-right font-mono">${it.inventoryQty.toFixed(2)} ${it.unit}</td>
-          <td class="px-2 py-2 text-right font-mono ${mc}">${it.missingQuantity.toFixed(2)} ${it.unit}</td>
-        </tr>`;
-      });
+      grouped[tid].sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>{ h+=rowHtml(it); });
     });
-    h+=`</tbody></table></div><p class="text-right font-bold text-lg mt-4">Total: ${fmtCur(l.totalCost)}</p>`;
+    h+=`</tbody></table></div><p class="text-right font-bold text-lg mt-4">Total: ${fmtCur(shownTotal)}</p>`;
     mb.innerHTML=h;
     mf.innerHTML=`<div class="flex justify-end gap-4"><button id="upd-inv-btn" class="py-2 px-4 rounded-lg font-semibold btn-primary" ${l.status==='completed'?'disabled':''}>${l.status==='completed'?'Inventario Actualizado':'Actualizar Inventario'}</button></div>`;
     document.getElementById('generic-modal').classList.remove('hidden');
