@@ -2423,7 +2423,7 @@ async function startApp() {
       const adjCost = req*unitCost;   // costo de lo requerido ajustado por rendimiento
       total+=adjCost;
       return {id:ing.id,name:ing.name,typeId:ing.typeId,unit:ing.consumptionUnit,purchaseUnit:ing.purchaseUnit,
-        requiredQuantity:reqRaw,requiredAdjusted:req,yieldPct:(ing.yield||100),adjustedCost:adjCost,unitCost:unitCost,
+        requiredQuantity:reqRaw,requiredAdjusted:req,yieldPct:(ing.yield||100),adjustedCost:adjCost,unitCost:unitCost,purchasePrice:ing.purchasePrice||0,
         inventoryQty:inv,missingQuantity:miss,missingInPurchaseUnits:fpu,
         purchaseUnitsToBuy:pu,purchaseCost:pc,isPurchased:false};
     }).filter(Boolean);
@@ -2445,8 +2445,10 @@ async function startApp() {
     const grouped=otherItems.reduce((a,it)=>{ const k=it.typeId||'untyped'; (a[k]=a[k]||[]).push(it); return a; },{});
     const skeys=Object.keys(grouped).sort((a,b)=>{ if(a==='untyped') return 1; if(b==='untyped') return -1;
       return (state.ingredientTypes.find(t=>t.id===a)?.name||'').localeCompare(state.ingredientTypes.find(t=>t.id===b)?.name||''); });
-    const unitCostOf = it => { if(it.unitCost!=null) return it.unitCost; const ing=state.ingredients.find(x=>x.id===it.id); return ing?getInventoryUnitCost(ing):0; };
-    const adjCostOf = it => { if(it.adjustedCost!=null) return it.adjustedCost; return (it.requiredAdjusted!=null?it.requiredAdjusted:it.requiredQuantity)*unitCostOf(it); };
+    const ingOf = it => state.ingredients.find(x=>x.id===it.id);
+    const purchasePriceOf = it => { const ing=ingOf(it); return ing?(ing.purchasePrice||0):(it.purchasePrice||0); };
+    const unitCostOf = it => { const ing=ingOf(it); if(ing && ing.consumptionQty>0) return ing.purchasePrice/ing.consumptionQty; return it.unitCost!=null?it.unitCost:0; };
+    const adjCostOf = it => (it.requiredAdjusted!=null?it.requiredAdjusted:it.requiredQuantity)*unitCostOf(it);
     let shownTotal=0;
     const rowHtml = it => {
       const mc=it.missingQuantity>0?'text-red-600 font-bold':'';
@@ -2455,7 +2457,7 @@ async function startApp() {
         <td class="px-2 py-2 text-center"><input type="checkbox" data-item-id="${it.id}" class="slc h-5 w-5" ${it.isPurchased?'checked':''} ${l.status==='completed'?'disabled':''}></td>
         <td class="px-2 py-2 whitespace-nowrap">${it.name}</td>
         <td class="px-2 py-2 text-right font-mono">${it.requiredQuantity.toFixed(2)} ${it.unit}${(it.yieldPct!=null && it.yieldPct!==100)?`<br><span class="text-[10px] text-blue-600">Ajustado (${it.yieldPct}%): ${(it.requiredAdjusted||it.requiredQuantity).toFixed(2)}</span>`:''}</td>
-        <td class="px-2 py-2 text-right font-mono text-gray-500">${fmtCur(unitCostOf(it))}/${it.unit}</td>
+        <td class="px-2 py-2 text-right whitespace-nowrap"><input type="number" min="0" step="any" data-item-id="${it.id}" class="slc-price w-24 border border-gray-300 rounded px-1 py-0.5 text-right font-mono text-xs" value="${purchasePriceOf(it)}"> <span class="text-[10px] text-gray-400">/${it.purchaseUnit}</span></td>
         <td class="px-2 py-2 text-right font-mono">${fmtCur(ac)}</td>
         <td class="px-2 py-2 text-right font-mono">${it.inventoryQty.toFixed(2)} ${it.unit}</td>
         <td class="px-2 py-2 text-right font-mono ${mc}">${it.missingQuantity.toFixed(2)} ${it.unit}</td>
@@ -2464,7 +2466,7 @@ async function startApp() {
     let h=`<div class="overflow-x-auto"><table class="min-w-full text-sm">
       <thead class="bg-gray-50"><tr>
         <th class="px-2 py-2 text-left">Comprado</th><th class="px-2 py-2 text-left">Ingrediente</th>
-        <th class="px-2 py-2 text-right">Requerido</th><th class="px-2 py-2 text-right">Costo/Ud.</th>
+        <th class="px-2 py-2 text-right">Requerido</th><th class="px-2 py-2 text-right">Costo/Ud. compra</th>
         <th class="px-2 py-2 text-right">Costo</th>
         <th class="px-2 py-2 text-right">Inventario</th><th class="px-2 py-2 text-right">Faltante</th>
       </tr></thead><tbody>`;
@@ -2485,6 +2487,19 @@ async function startApp() {
       const ns=JSON.parse(JSON.stringify(state));
       const ll=ns.savedShoppingLists.find(x=>x.id===id);
       if(ll){ const it=ll.items.find(x=>x.id===e.target.dataset.itemId); if(it) it.isPurchased=e.target.checked; updateState(ns,false); }
+    }));
+    mb.querySelectorAll('.slc-price').forEach(inp=>inp.addEventListener('change',e=>{
+      const iid=e.target.dataset.itemId; const np=parseFloat(e.target.value)||0;
+      const ns=JSON.parse(JSON.stringify(state));
+      const ing=ns.ingredients.find(x=>x.id===iid); if(ing) ing.purchasePrice=np;   // se refleja en el módulo de ingredientes
+      const ll=ns.savedShoppingLists.find(x=>x.id===id);
+      if(ll){ const it=ll.items.find(x=>x.id===iid);
+        if(it){ it.purchasePrice=np; const uc=(ing&&ing.consumptionQty>0)?np/ing.consumptionQty:(it.unitCost||0);
+          it.unitCost=uc; it.adjustedCost=(it.requiredAdjusted!=null?it.requiredAdjusted:it.requiredQuantity)*uc; it.purchaseCost=(it.purchaseUnitsToBuy||0)*np; }
+        ll.totalCost=ll.items.reduce((s,x)=>s+(x.adjustedCost||0),0); }
+      updateState(ns);
+      renderIngredientsList(); renderInventoryList();   // refleja el nuevo precio en el módulo de ingredientes
+      handleViewShoppingList(id);                        // recalcula y refresca la vista
     }));
     mf.querySelector('#upd-inv-btn').addEventListener('click',()=>{
       const ns=JSON.parse(JSON.stringify(state));
