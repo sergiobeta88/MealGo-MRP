@@ -1471,8 +1471,16 @@ async function startApp() {
       pl.innerHTML = ings.length
         ? `<div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-gray-50"><tr>
             <th class="px-2 py-2 text-left">Producto</th><th class="px-2 py-2 text-right">Precio compra</th>
+            <th class="px-2 py-2 text-center">Var.</th>
             <th class="px-2 py-2 text-right">Costo/Ud. consumo</th><th class="px-2 py-2 text-right">Rendimiento</th></tr></thead><tbody>${
-            ings.map(i=>{ const uc=i.consumptionQty>0?i.purchasePrice/i.consumptionQty:0; return `<tr class="border-b"><td class="px-2 py-2">${i.name}</td><td class="px-2 py-2 text-right font-mono">${fmtCur(i.purchasePrice||0)}/${i.purchaseUnit}</td><td class="px-2 py-2 text-right font-mono text-gray-500">${fmtCur(uc)}/${i.consumptionUnit}</td><td class="px-2 py-2 text-right font-mono">${i.yield||100}%</td></tr>`; }).join('')
+            ings.map(i=>{ const uc=i.consumptionQty>0?i.purchasePrice/i.consumptionQty:0;
+              const prev=i.prevPurchasePrice; const cur=i.purchasePrice||0;
+              let varCell='<span class="text-blue-600 font-bold" title="Sin cambios">–</span>';
+              if (prev!=null) { const diff=cur-prev;
+                if (diff>0) varCell=`<span class="text-red-600 font-bold" title="Subió (antes ${fmtCur(prev)})">▲</span>`;
+                else if (diff<0) varCell=`<span class="text-green-600 font-bold" title="Bajó (antes ${fmtCur(prev)})">▼</span>`;
+                else varCell='<span class="text-blue-600 font-bold" title="Se mantuvo">–</span>'; }
+              return `<tr class="border-b"><td class="px-2 py-2">${i.name}</td><td class="px-2 py-2 text-right font-mono">${fmtCur(cur)}/${i.purchaseUnit}</td><td class="px-2 py-2 text-center">${varCell}</td><td class="px-2 py-2 text-right font-mono text-gray-500">${fmtCur(uc)}/${i.consumptionUnit}</td><td class="px-2 py-2 text-right font-mono">${i.yield||100}%</td></tr>`; }).join('')
           }</tbody></table></div>`
         : '<p class="text-gray-400 italic text-sm">No hay productos de este tipo.</p>';
     }
@@ -2157,7 +2165,9 @@ async function startApp() {
   const handleUpdateIngredient = (id,data) => {
     const ns=JSON.parse(JSON.stringify(state));
     const i=ns.ingredients.findIndex(x=>x.id===id);
-    if(i>-1){ ns.ingredients[i]={...ns.ingredients[i],...data}; updateState(ns); }
+    if(i>-1){ const old=ns.ingredients[i];
+      if (data.purchasePrice!=null && data.purchasePrice!==old.purchasePrice) data.prevPurchasePrice = old.purchasePrice;
+      ns.ingredients[i]={...old,...data}; updateState(ns); }
   };
 
   const handleAddComponentToDish = () => {
@@ -2517,7 +2527,7 @@ async function startApp() {
     mb.querySelectorAll('.slc-price').forEach(inp=>inp.addEventListener('change',e=>{
       const iid=e.target.dataset.itemId; const np=parseFloat(e.target.value)||0;
       const ns=JSON.parse(JSON.stringify(state));
-      const ing=ns.ingredients.find(x=>x.id===iid); if(ing) ing.purchasePrice=np;   // se refleja en el módulo de ingredientes
+      const ing=ns.ingredients.find(x=>x.id===iid); if(ing){ if(np!==ing.purchasePrice) ing.prevPurchasePrice=ing.purchasePrice; ing.purchasePrice=np; }   // se refleja en el módulo de ingredientes
       const ll=ns.savedShoppingLists.find(x=>x.id===id);
       if(ll){ const it=ll.items.find(x=>x.id===iid);
         if(it){ it.purchasePrice=np; const uc=(ing&&ing.consumptionQty>0)?np/ing.consumptionQty:(it.unitCost||0);
