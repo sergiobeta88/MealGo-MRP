@@ -309,12 +309,16 @@
     <!-- Panel de Control -->
     <section id="dashboard-section" class="space-y-6">
       <div class="card">
-        <h2 class="text-2xl font-bold text-gray-800 mb-4">Resumen de Platos Finales</h2>
-        <div id="dashboard-final-dishes-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+          <h2 class="text-2xl font-bold text-gray-800">Monitor de Precios de Productos</h2>
+          <div><label class="block text-xs font-medium text-gray-500">Filtrar por tipo</label>
+            <select id="dash-price-type" class="mt-1 block border-gray-300 rounded-md shadow-sm text-sm"></select></div>
+        </div>
+        <div id="dash-price-list"></div>
       </div>
       <div class="card">
-        <h2 class="text-2xl font-bold text-gray-800 mb-4">Resumen de Preparaciones / Acompañantes</h2>
-        <div id="dashboard-preparations-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Costos de Platos Principales del Menú</h2>
+        <div id="dash-menu-cost"></div>
       </div>
     </section>
 
@@ -1350,6 +1354,7 @@ async function startApp() {
     document.getElementById('generate-by-date-btn').addEventListener('click', handleGenerateByDate);
     document.getElementById('month-filter').addEventListener('change', renderSavedOrders);
     document.getElementById('order-sort-by').addEventListener('change', renderSavedOrders);
+    const dpt=document.getElementById('dash-price-type'); if(dpt) dpt.addEventListener('change', e=>{ dashPriceType=e.target.value; renderDashboard(); });
     document.getElementById('search-inventory-input').addEventListener('input', renderInventoryList);
     document.getElementById('inventory-clear-checks').addEventListener('click', ()=>{
       if(!confirm('¿Quitar todas las marcas de ajuste del inventario?')) return;
@@ -1453,22 +1458,40 @@ async function startApp() {
     document.getElementById('undo-btn').disabled = history.length === 0;
   };
 
+  let dashPriceType = null;
   const renderDashboard = () => {
-    const fc = document.getElementById('dashboard-final-dishes-list');
-    const pc = document.getElementById('dashboard-preparations-list');
-    fc.innerHTML=''; pc.innerHTML='';
-    const finals = state.dishes.filter(d=>d.dishType!=='preparation');
-    const preps  = state.dishes.filter(d=>d.dishType==='preparation');
-    (finals.length===0 ? [fc.innerHTML='<p class="text-gray-500 col-span-full">Aún no has creado platos finales.</p>'] :
-      finals.forEach(d=>{ const c=calculateDishCost(d); const el=document.createElement('div');
-        el.className='p-4 border rounded-lg bg-white shadow-sm';
-        el.innerHTML=`<h3 class="font-bold text-lg text-orange-500">${d.name}</h3><p class="text-2xl font-light text-gray-800">${fmtCur(c)}</p>`;
-        fc.appendChild(el); }));
-    (preps.length===0 ? [pc.innerHTML='<p class="text-gray-500 col-span-full">Aún no has creado preparaciones.</p>'] :
-      preps.forEach(d=>{ const c=calculateDishCost(d); const el=document.createElement('div');
-        el.className='p-4 border rounded-lg bg-white shadow-sm';
-        el.innerHTML=`<h3 class="font-bold text-lg text-green-600">${d.name}</h3><p class="text-2xl font-light text-gray-800">${fmtCur(c)}</p>`;
-        pc.appendChild(el); }));
+    // Monitor de precios de productos (ingredientes) por tipo
+    const sel=document.getElementById('dash-price-type');
+    const types=[...state.ingredientTypes].sort((a,b)=>a.name.localeCompare(b.name));
+    if (dashPriceType===null) { const carne=types.find(t=>/carne/i.test(t.name||'')); dashPriceType = carne?carne.id:(types[0]?types[0].id:''); }
+    if (sel) { sel.innerHTML = types.length ? types.map(t=>`<option value="${t.id}">${t.name}</option>`).join('') : '<option value="">(sin tipos)</option>'; if(dashPriceType) sel.value=dashPriceType; }
+    const pl=document.getElementById('dash-price-list');
+    if (pl) {
+      const ings = state.ingredients.filter(i=>i.typeId===dashPriceType).sort((a,b)=>a.name.localeCompare(b.name));
+      pl.innerHTML = ings.length
+        ? `<div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-gray-50"><tr>
+            <th class="px-2 py-2 text-left">Producto</th><th class="px-2 py-2 text-right">Precio compra</th>
+            <th class="px-2 py-2 text-right">Costo/Ud. consumo</th><th class="px-2 py-2 text-right">Rendimiento</th></tr></thead><tbody>${
+            ings.map(i=>{ const uc=i.consumptionQty>0?i.purchasePrice/i.consumptionQty:0; return `<tr class="border-b"><td class="px-2 py-2">${i.name}</td><td class="px-2 py-2 text-right font-mono">${fmtCur(i.purchasePrice||0)}/${i.purchaseUnit}</td><td class="px-2 py-2 text-right font-mono text-gray-500">${fmtCur(uc)}/${i.consumptionUnit}</td><td class="px-2 py-2 text-right font-mono">${i.yield||100}%</td></tr>`; }).join('')
+          }</tbody></table></div>`
+        : '<p class="text-gray-400 italic text-sm">No hay productos de este tipo.</p>';
+    }
+    // Monitor de costos de los platos principales del menú
+    const mc=document.getElementById('dash-menu-cost');
+    if (mc) {
+      const items=(state.menu||[]).map(m=>({name:m.name||'(sin nombre)', cost:itemCost(m)}));
+      if (!items.length) { mc.innerHTML='<p class="text-gray-400 italic text-sm">Aún no hay ítems en el menú.</p>'; }
+      else {
+        const avg=items.reduce((s,x)=>s+x.cost,0)/items.length;
+        const sorted=[...items].sort((a,b)=>a.cost-b.cost);
+        const cheapest=sorted[0], expensive=sorted[sorted.length-1];
+        mc.innerHTML=`<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="p-3 rounded-lg border bg-white text-center"><p class="text-xs text-gray-500">Costo promedio</p><p class="text-xl font-bold font-mono text-gray-800">${fmtCur(avg)}</p><p class="text-[11px] text-gray-400">${items.length} plato(s)</p></div>
+          <div class="p-3 rounded-lg border bg-red-50 text-center"><p class="text-xs text-red-600 font-semibold">Más caro</p><p class="text-lg font-bold font-mono text-red-700">${fmtCur(expensive.cost)}</p><p class="text-[11px] text-gray-600">${expensive.name}</p></div>
+          <div class="p-3 rounded-lg border bg-green-50 text-center"><p class="text-xs text-green-600 font-semibold">Más barato</p><p class="text-lg font-bold font-mono text-green-700">${fmtCur(cheapest.cost)}</p><p class="text-[11px] text-gray-600">${cheapest.name}</p></div>
+        </div>`;
+      }
+    }
   };
 
   const renderIngredientTypes = () => {
@@ -1966,8 +1989,8 @@ async function startApp() {
           <div class="flex items-center gap-2">
             <input type="number" step="any" placeholder="Cantidad" class="w-24 border-gray-300 rounded-md shadow-sm text-sm" id="inv-qty-${ing.id}">
             <select class="w-28 border-gray-300 rounded-md shadow-sm text-sm" id="inv-unit-${ing.id}">
+              <option value="consumption" selected>${ing.consumptionUnit}</option>
               <option value="purchase">${ing.purchaseUnit}</option>
-              <option value="consumption">${ing.consumptionUnit}</option>
             </select>
           </div></td>
         <td class="px-6 py-4 whitespace-nowrap text-right">
@@ -2918,7 +2941,8 @@ async function startApp() {
   const renderMenuMainList = () => {
     const cont=document.getElementById('menu-main-list'); if(!cont) return;
     if(!state.menu.length){ cont.innerHTML='<p class="text-gray-400 italic">Aún no hay ítems en el menú.</p>'; return; }
-    cont.innerHTML = state.menu.map(m=>{
+    const ordered = [...state.menu].sort((a,b)=>((b.active!==false)-(a.active!==false)));  // activos primero
+    cont.innerHTML = ordered.map(m=>{
       const activo = m.active!==false;
       return `<div class="flex flex-wrap items-center gap-3 p-2 border rounded-lg ${activo?'bg-white':'bg-gray-100 opacity-70'}">
         <div class="flex-grow min-w-[200px]">
