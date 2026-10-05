@@ -355,7 +355,10 @@
         </form>
       </div>
       <div class="card">
-        <h2 class="text-2xl font-bold text-gray-800 mb-4">Lista de Clientes</h2>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h2 class="text-2xl font-bold text-gray-800">Lista de Clientes</h2>
+          <button type="button" id="clients-dedup-btn" class="py-2 px-4 rounded-lg text-sm font-semibold btn-secondary">🔎 Buscar / fusionar duplicados</button>
+        </div>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50"><tr>
@@ -1355,6 +1358,7 @@ async function startApp() {
     document.getElementById('month-filter').addEventListener('change', renderSavedOrders);
     document.getElementById('order-sort-by').addEventListener('change', renderSavedOrders);
     const dpt=document.getElementById('dash-price-type'); if(dpt) dpt.addEventListener('change', e=>{ dashPriceType=e.target.value; renderDashboard(); });
+    const ddb=document.getElementById('clients-dedup-btn'); if(ddb) ddb.addEventListener('click', openMergeClientsModal);
     document.getElementById('search-inventory-input').addEventListener('input', renderInventoryList);
     document.getElementById('inventory-clear-checks').addEventListener('click', ()=>{
       if(!confirm('¿Quitar todas las marcas de ajuste del inventario?')) return;
@@ -3491,12 +3495,19 @@ async function startApp() {
 
   // Resuelve el cliente por correo. Opción B: si YA existe (cliente existente), el módulo manda
   // (no se sobrescribe su nombre). Solo un cliente 'nuevo' define/actualiza sus datos.
+  const normPhone = p => (p||'').replace(/\D/g,'');   // deja solo dígitos
   const resolveOrCreateClient = (ns, d) => {
     const email=(d.email||'').trim();
-    const idx = email ? ns.clients.findIndex(c=>(c.email||'').trim().toLowerCase()===email.toLowerCase()) : -1;
+    const phone=normPhone(d.whatsapp);
+    let idx = email ? ns.clients.findIndex(c=>(c.email||'').trim().toLowerCase()===email.toLowerCase()) : -1;
+    // Si el correo no coincide, intenta por teléfono (evita duplicados por error de tipeo en el correo)
+    if (idx === -1 && phone.length>=7) idx = ns.clients.findIndex(c=>normPhone(c.whatsapp||c.contact)===phone);
     if (idx > -1) {
+      const ex=ns.clients[idx];
+      if (!ex.email && email) ex.email=email;                                   // completa correo si no tenía
+      if (!(ex.whatsapp||ex.contact) && d.whatsapp) { ex.whatsapp=d.whatsapp; ex.contact=d.whatsapp; }
       if (d.kind === 'nuevo') {
-        ns.clients[idx] = mergeClientData(ns.clients[idx], { name:d.name, lastname:d.lastname, whatsapp:d.whatsapp, contact:d.whatsapp, address:d.address });
+        ns.clients[idx] = mergeClientData(ex, { name:d.name, lastname:d.lastname, whatsapp:d.whatsapp, contact:d.whatsapp, address:d.address });
       }
       return ns.clients[idx]; // existente: se respeta lo registrado
     }
@@ -3592,6 +3603,74 @@ async function startApp() {
     const out = { ...existing };
     Object.keys(incoming).forEach(k=>{ const v=incoming[k]; if (v!==undefined && v!==null && String(v).trim()!=='') out[k]=v; });
     return out;
+  };
+
+  // ── Detección y fusión de clientes duplicados ──
+  const clientOrderCount = id => (state.menuOrders||[]).filter(o=>o.clientId===id).length + (state.customerOrders||[]).filter(o=>o.clientId===id).length;
+  const findDuplicateClientGroups = () => {
+    const cs=state.clients||[];
+    const normEmail=e=>(e||'').trim().toLowerCase();
+    const normName=n=>(n||'').trim().toLowerCase().replace(/\s+/g,' ');
+    const parent=cs.map((_,i)=>i);
+    const find=x=>{ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+    const union=(a,b)=>{ parent[find(a)]=find(b); };
+    const byEmail={},byPhone={},byName={};
+    cs.forEach((c,i)=>{
+      const e=normEmail(c.email); if(e){ if(byEmail[e]!=null) union(i,byEmail[e]); else byEmail[e]=i; }
+      const ph=normPhone(c.whatsapp||c.contact); if(ph.length>=7){ if(byPhone[ph]!=null) union(i,byPhone[ph]); else byPhone[ph]=i; }
+      const nm=normName(clientFullName(c)); if(nm){ if(byName[nm]!=null) union(i,byName[nm]); else byName[nm]=i; }
+    });
+    const groups={};
+    cs.forEach((c,i)=>{ const r=find(i); (groups[r]=groups[r]||[]).push(c); });
+    return Object.values(groups).filter(g=>g.length>1);
+  };
+  const openMergeClientsModal = () => {
+    const groups=findDuplicateClientGroups();
+    document.getElementById('modal-title').textContent='Fusionar clientes duplicados';
+    let body;
+    if(!groups.length){ body='<p class="text-gray-500 p-2">No se encontraron clientes duplicados (por correo, teléfono o nombre).</p>'; }
+    else {
+      body=`<p class="text-sm text-gray-600 mb-3">Se encontraron ${groups.length} grupo(s) de posibles duplicados. Elige el cliente que quieres conservar y pulsa "Fusionar": los demás se combinan en él y sus pedidos se reasignan.</p>`;
+      groups.forEach((g,gi)=>{
+        const def=[...g].sort((a,b)=>clientOrderCount(b.id)-clientOrderCount(a.id))[0];
+        body+=`<div class="border rounded-lg p-3 mb-3 bg-gray-50" data-group="${gi}">
+          ${g.map(c=>`<label class="flex items-start gap-2 py-1 cursor-pointer text-sm">
+            <input type="radio" name="merge-primary-${gi}" value="${c.id}" ${c.id===def.id?'checked':''} class="mt-1">
+            <span><b>${clientFullName(c)||'(sin nombre)'}</b> <span class="text-xs text-gray-400">· ${clientOrderCount(c.id)} pedido(s)</span>
+              <br><span class="text-xs text-gray-500">${c.email||'(sin correo)'} · ${c.whatsapp||c.contact||'(sin tel.)'}${c.address?' · '+c.address:''}</span></span>
+          </label>`).join('')}
+          <div class="text-right mt-1"><button type="button" data-group="${gi}" class="merge-group-btn py-1.5 px-3 rounded-lg text-xs font-semibold btn-primary">Fusionar este grupo</button></div>
+        </div>`;
+      });
+    }
+    document.getElementById('modal-body').innerHTML=body;
+    document.getElementById('modal-footer').innerHTML='';
+    document.getElementById('generic-modal').classList.remove('hidden');
+    // ids por grupo para el handler
+    document.querySelectorAll('.merge-group-btn').forEach(btn=>btn.addEventListener('click',()=>{
+      const gi=+btn.dataset.group; const g=groups[gi]; if(!g) return;
+      const primaryId=document.querySelector(`input[name="merge-primary-${gi}"]:checked`)?.value || g[0].id;
+      const otherIds=g.filter(c=>c.id!==primaryId).map(c=>c.id);
+      if(!otherIds.length) return;
+      handleMergeClientGroup(primaryId, otherIds);
+    }));
+  };
+  const handleMergeClientGroup = (primaryId, otherIds) => {
+    const ns=JSON.parse(JSON.stringify(state));
+    const primary=ns.clients.find(c=>c.id===primaryId); if(!primary) return;
+    // combinar datos faltantes del principal desde los duplicados
+    otherIds.forEach(oid=>{ const o=ns.clients.find(c=>c.id===oid); if(!o) return;
+      ['name','lastname','email','whatsapp','contact','address'].forEach(k=>{ if((!primary[k]||String(primary[k]).trim()==='') && o[k]) primary[k]=o[k]; });
+    });
+    const primName=clientFullName(primary);
+    // reasignar pedidos de los duplicados al principal
+    (ns.menuOrders||[]).forEach(o=>{ if(otherIds.includes(o.clientId)){ o.clientId=primaryId; o.clientName=primName||o.clientName; } });
+    (ns.customerOrders||[]).forEach(o=>{ if(otherIds.includes(o.clientId)){ o.clientId=primaryId; o.clientName=primName||o.clientName; } });
+    // eliminar los duplicados
+    ns.clients=ns.clients.filter(c=>!otherIds.includes(c.id));
+    updateState(ns);
+    renderClientsList();
+    openMergeClientsModal();   // refresca el listado de duplicados
   };
 
   const showOrderConfirmed = (order, name, emailSent) => {
