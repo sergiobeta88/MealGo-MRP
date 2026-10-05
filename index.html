@@ -1790,18 +1790,6 @@ async function startApp() {
       </div>`;
     };
     let out='';
-    // Estado de producción por día (solo en la vista en vivo)
-    if (!isSaved) {
-      let execHtml=`<div class="card p-3 mb-6 border border-gray-200 bg-white"><h4 class="font-bold text-base text-gray-700 mb-2">Estado de producción por día</h4><div class="flex flex-wrap gap-2">`;
-      Object.keys(byDate).sort().forEach(date=>{
-        const isExec=state.executedProductions.includes(date);
-        execHtml+= isExec
-          ? `<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">${fmtDate(date)}: Ejecutada</span>`
-          : `<button data-date="${date}" class="btn-execute-daily-production px-3 py-1 text-xs rounded-full bg-yellow-500 text-white font-semibold">Ejecutar ${fmtDate(date)}</button>`;
-      });
-      execHtml+=`</div></div>`;
-      out += execHtml;
-    }
     // Total de ingredientes CONSOLIDADO para todo el rango
     const rangeTotalIngs={};
     orders.forEach(o=>(Array.isArray(o.items)?o.items:[]).forEach(it=>{
@@ -1954,7 +1942,6 @@ async function startApp() {
           <button data-id="${p.id}" class="btn-export-prod-csv py-1 px-3 text-xs rounded btn-secondary">CSV (Platos)</button>
           <button data-id="${p.id}" class="btn-export-prod-ing-csv py-1 px-3 text-xs rounded btn-secondary">Ingredientes CSV</button>
           <button data-id="${p.id}" class="btn-export-prod-consolidado-csv py-1 px-3 text-xs rounded btn-secondary">Consolidado CSV</button>
-          <button data-id="${p.id}" class="btn-execute-plan py-1 px-3 text-xs rounded ${p.isExecuted?'bg-green-500 text-white cursor-not-allowed':'bg-yellow-500 text-white'}" ${p.isExecuted?'disabled':''}>${p.isExecuted?'Ejecutado':'Ejecutar'}</button>
           <button data-id="${p.id}" class="btn-delete-plan text-red-500 font-bold text-lg">&times;</button>
         </div></div>`;
       c.appendChild(card);
@@ -1964,7 +1951,6 @@ async function startApp() {
     c.querySelectorAll('.btn-export-prod-csv').forEach(b=>b.addEventListener('click',e=>handleExportProductionCSV(e.target.dataset.id)));
     c.querySelectorAll('.btn-export-prod-ing-csv').forEach(b=>b.addEventListener('click',e=>handleExportProductionIngredientsCSV(e.target.dataset.id)));
     c.querySelectorAll('.btn-export-prod-consolidado-csv').forEach(b=>b.addEventListener('click',e=>handleExportConsolidatedProductionCSV(e.target.dataset.id)));
-    c.querySelectorAll('.btn-execute-plan').forEach(b=>b.addEventListener('click',e=>handleExecuteProductionPlan(e.target.dataset.id)));
     c.querySelectorAll('.btn-delete-plan').forEach(b=>b.addEventListener('click',e=>{
       const ns=JSON.parse(JSON.stringify(state));
       ns.savedProductionPlans=ns.savedProductionPlans.filter(x=>x.id!==e.target.dataset.id);
@@ -2517,7 +2503,7 @@ async function startApp() {
     });
     h+=`</tbody></table></div><p class="text-right font-bold text-lg mt-4">Total: ${fmtCur(shownTotal)}</p>`;
     mb.innerHTML=h;
-    mf.innerHTML=`<div class="flex justify-end gap-4"><button id="upd-inv-btn" class="py-2 px-4 rounded-lg font-semibold btn-primary" ${l.status==='completed'?'disabled':''}>${l.status==='completed'?'Inventario Actualizado':'Actualizar Inventario'}</button></div>`;
+    mf.innerHTML='';
     document.getElementById('generic-modal').classList.remove('hidden');
     mb.querySelectorAll('.slc').forEach(cb=>cb.addEventListener('change',e=>{
       const ns=JSON.parse(JSON.stringify(state));
@@ -2537,16 +2523,6 @@ async function startApp() {
       renderIngredientsList(); renderInventoryList();   // refleja el nuevo precio en el módulo de ingredientes
       handleViewShoppingList(id);                        // recalcula y refresca la vista
     }));
-    mf.querySelector('#upd-inv-btn').addEventListener('click',()=>{
-      const ns=JSON.parse(JSON.stringify(state));
-      const li=ns.savedShoppingLists.findIndex(x=>x.id===id); if(li===-1) return;
-      ns.savedShoppingLists[li].items.forEach(it=>{
-        if(it.isPurchased){ const ii=ns.ingredients.findIndex(x=>x.id===it.id);
-          if(ii>-1) ns.ingredients[ii].inventoryQty+=it.purchaseUnitsToBuy*ns.ingredients[ii].consumptionQty; }
-      });
-      ns.savedShoppingLists[li].status='completed'; updateState(ns);
-      document.getElementById('generic-modal').classList.add('hidden');
-    });
   };
 
   const handleExportShoppingListPDF = id => {
