@@ -1725,7 +1725,7 @@ async function startApp() {
           if (g.isFinal) {
             const clientCk = `c4|${g.date}|${g.id}|${ci}|${cc.client}`;
             const accsHtml = (cc.accs && cc.accs.length)
-              ? cc.accs.map(a=>{ const ack=`c4|${g.date}|${a.id}|${cc.client}`; return `<label class="inline-flex items-center gap-1 mr-3 cursor-pointer"><input type="checkbox" data-ck="${ack}" ${prodChecks[ack]?'checked':''} class="prod-check w-3 h-3 shrink-0"><span>${a.name}${a.adicional?' <span class="text-orange-600 font-semibold">(adic.)</span>':''}</span></label>`; }).join('')
+              ? cc.accs.map(a=>{ const ack=`c4|${g.date}|${a.id}|${cc.client}|${g.id}`; return `<label class="inline-flex items-center gap-1 mr-3 cursor-pointer"><input type="checkbox" data-ck="${ack}" ${prodChecks[ack]?'checked':''} class="prod-check w-3 h-3 shrink-0"><span>${a.name}${a.adicional?' <span class="text-orange-600 font-semibold">(adic.)</span>':''}</span></label>`; }).join('')
               : '<span class="text-gray-400">(sin acompañantes)</span>';
             return `<div class="py-0.5 text-[11px]">
               <label class="inline-flex items-center gap-2 cursor-pointer font-bold"><input type="checkbox" data-ck="${clientCk}" ${prodChecks[clientCk]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span>${cc.client}</span></label>
@@ -1733,7 +1733,7 @@ async function startApp() {
             </div>`;
           } else {
             const marca = cc.adicional ? ' · <span class="text-orange-600 font-semibold">adicional</span>' : ' · <span class="text-gray-500">por defecto</span>';
-            const ck = `c4|${g.date}|${g.id}|${cc.client}`;   // clave enlazada (sin índice) con la casilla del plato principal
+            const ck = `c4|${g.date}|${g.id}|${cc.client}|${cc.finalId||''}`;   // clave enlazada con el plato principal correspondiente
             return `<label class="flex items-center gap-2 py-0.5 text-[11px] cursor-pointer"><input type="checkbox" data-ck="${ck}" ${prodChecks[ck]?'checked':''} class="prod-check w-3.5 h-3.5 shrink-0"><span>${cc.client}${cc.final?` (con ${cc.final})`:''}${marca}</span></label>`;
           }
         }).join('');
@@ -1805,21 +1805,22 @@ async function startApp() {
     out += rangeHtml;
     // Clientes por plato
     const dishClients={};
-    const addClient=(dishId,client,finalName,isAdic,accs)=>{ (dishClients[dishId]=dishClients[dishId]||[]).push({client,final:finalName||'',adicional:!!isAdic,accs:accs||null}); };
+    const addClient=(dishId,client,finalName,isAdic,accs,finalId)=>{ (dishClients[dishId]=dishClients[dishId]||[]).push({client,final:finalName||'',adicional:!!isAdic,accs:accs||null,finalId:finalId||''}); };
     orders.forEach(o=>{
       const client=o.clientName||'Sin cliente';
       if (Array.isArray(o.menuPedidos) && o.menuPedidos.length) {
         o.menuPedidos.forEach(ped=>{
           const finalDish=ped.dishes.find(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return d && d.dishType==='final'; });
           const finalName=finalDish?finalDish.name:(ped.itemName||'');
+          const finalId=finalDish?finalDish.id:'';
           const accOrder = t => ({carbohidratos:0, proteinas:1, preparation:2, adobos:3, ensaladas:4}[t] ?? 2);
           const accs=ped.dishes.filter(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return !(d && d.dishType==='final'); })
             .map(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); return {id:dd.id,name:dd.name,adicional:!!dd.adicional,dishType:d?(d.dishType||''):''}; })
             .sort((a,b)=>accOrder(a.dishType)-accOrder(b.dishType) || a.name.localeCompare(b.name));
-          ped.dishes.forEach(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); const isFinal=d&&d.dishType==='final'; addClient(dd.id, client, isFinal?'':finalName, !!dd.adicional, isFinal?accs:null); });
+          ped.dishes.forEach(dd=>{ const d=state.dishes.find(x=>x.id===dd.id); const isFinal=d&&d.dishType==='final'; addClient(dd.id, client, isFinal?'':finalName, !!dd.adicional, isFinal?accs:null, isFinal?'':finalId); });
         });
       } else {
-        (Array.isArray(o.items)?o.items:[]).forEach(it=>addClient(it.id, client, '', false, null));
+        (Array.isArray(o.items)?o.items:[]).forEach(it=>addClient(it.id, client, '', false, null, ''));
       }
     });
     // Listado consolidado de preparaciones
