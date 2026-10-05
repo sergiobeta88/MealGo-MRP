@@ -1553,13 +1553,14 @@ async function startApp() {
     const mkCard = dish => {
       const cost=calculateDishCost(dish);
       const compsHtml=dish.components.map(comp=>{
-        let name='[Eliminado]',unit='un',cc=0;
+        let name='[Eliminado]',unit='un',cc=0,adj=null,yld=100;
         if(comp.type==='ingredient'){ const i=state.ingredients.find(x=>x.id===comp.id);
-          if(i){name=i.name;unit=comp.unit||i.consumptionUnit;cc=getBaseUnitCost(i)*comp.quantity;} }
+          if(i){name=i.name;unit=comp.unit||i.consumptionUnit;cc=getBaseUnitCost(i)*comp.quantity;
+            yld=i.yield||100; if(yld!==100 && yld>0) adj=comp.quantity/(yld/100);} }
         else{ const s=state.dishes.find(x=>x.id===comp.id);
           if(s){name=`(${dishTypeLabel(s.dishType)}) ${s.name}`;unit='un';cc=calculateDishCost(s)*comp.quantity;} }
         return `<li class="text-sm text-gray-600 flex justify-between">
-          <span>${comp.quantity} ${unit} de ${name}</span>
+          <span>${comp.quantity} ${unit} de ${name}${adj!=null?` <span class="text-[11px] text-blue-600">(a alistar al ${yld}%: ${adj.toFixed(2)} ${unit})</span>`:''}</span>
           <span class="font-semibold">${fmtCur(cc)}</span></li>`;
       }).join('');
       const tl=dishTypeLabel(dish.dishType);
@@ -4091,4 +4092,3 @@ async function startApp() {
 </script>
 </body>
 </html>
-                    
